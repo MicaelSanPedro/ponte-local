@@ -65,11 +65,12 @@ curl -fso agent.js https://SEU-LINK-DE-PREVIEW/api/ponte/download
 node agent.js --server https://SEU-LINK-DE-PREVIEW --token SEU_TOKEN --save
 ```
 
-**Forma 2 — via este repositório** (sobrevive a reset da VM):
+**Forma 2 — via este repositório** (sobrevive a reset da VM; repo **privado** = precisa de um token GitHub com escopo `repo`):
 
 ```bash
 mkdir -p ~/ponte-agent && cd ~/ponte-agent
-curl -fso agent.js https://raw.githubusercontent.com/MicaelSanPedro/ponte-local/main/agente/agent.js
+curl -fso agent.js -H "Authorization: token SEU_TOKEN_GITHUB" \
+  https://raw.githubusercontent.com/MicaelSanPedro/ponte-local/main/agente/agent.js
 node agent.js --server https://SEU-LINK-DE-PREVIEW --token SEU_TOKEN --save
 ```
 
