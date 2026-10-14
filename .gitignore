@@ -1,0 +1,12 @@
+# Nunca versionar dados locais da ponte
+ponte.config.json
+ponte-log.jsonl
+*.bak
+ponte-update/
+/download/
+*.zip
+
+# Projeto Node/Next (referência de restauração)
+node_modules/
+.next/
+.env*
