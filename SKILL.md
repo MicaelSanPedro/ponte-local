@@ -272,6 +272,8 @@ aceita ambos os estilos conforme o SO dele.
 | `mkdir` | `{"path":"..."}` | Cria pasta(s) |
 | `move` | `{"from":"...","to":"..."}` | Move/renomeia |
 | `rename` | `{"path":"...","newName":"novo.ext"}` | Renomeia no mesmo lugar |
+| `delete` | `{"path":"..."}` ou `{"paths":["...","..."]}` | Move para a lixeira do agente (recuperável); recusa apagar a home inteira |
+| `restore` | `{"trashName":"..."}` | Restaura item da lixeira no lugar original (use o `trashName` devolvido pelo delete) |
 | `organize_plan` | `{"path":"/home/u/Downloads"}` | Propõe plano de organização por tipo (não executa!) |
 | `apply_plan` | `{"plan":[{"de":"/a/b.txt","para":"/c/b.txt"}]}` | Executa movimentos em lote (mostre o plano antes) |
 | `undo_last` | `{}` | Desfaz a última operação (lixeira/lote) |

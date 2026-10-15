@@ -655,7 +655,7 @@ const ACTIONS = {
       audit({ action: "delete", resumo: rp + " → lixeira", undo: { kind: "trash", trashName } });
       feitos.push({ path: rp, lixeira: trashName });
     }
-    return { itens: feitos, nota: "tudo foi para a lixeira do sistema — recuperável" };
+    return { itens: feitos, nota: "tudo foi para a lixeira do agente — recuperável (restore/undo_last)" };
   },
 
   restore: async (args) => {
