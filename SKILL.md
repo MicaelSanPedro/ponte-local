@@ -1,13 +1,13 @@
 ---
 name: ponte-local
 description: >-
-  Operar o PC Linux do usuário remotamente pelo chat. Instalar a ponte
-  (relay Next.js + agente Node.js zero-dependências), mostrar ao usuário
+  Operar o PC do usuário (Windows ou Linux) remotamente pelo chat. Instalar a
+  ponte (relay Next.js + agente Node.js zero-dependências), mostrar ao usuário
   o que ele precisa instalar, validar a conexão e executar operações de
-  arquivos e comandos, com modos supervisionado/autônomo, lixeira XDG com
-  undo e trava anticatástrofe. Use quando o usuário pedir para você
-  mexer no computador dele: organizar arquivos, procurar coisas, rodar
-  comandos, trocar configurações do desktop, automatizar tarefas locais.
+  arquivos e comandos, com modos supervisionado/autônomo, lixeira com undo e
+  trava anticatástrofe. Use quando o usuário pedir para você mexer no
+  computador dele: organizar arquivos, procurar coisas, rodar comandos,
+  trocar configurações do desktop, automatizar tarefas locais.
 ---
 
 # Ponte Local — skill de operação remota do PC do usuário
@@ -26,9 +26,12 @@ conexões de **saída** — nada de portas abertas, firewall, port forwarding ou
 
 ## Regras de ouro — leia antes de operar
 
+0. **Windows ou Linux? Pergunte antes.** Antes de gerar QUALQUER comando de
+   instalação, pergunte ao usuário: *"seu PC é Windows ou Linux (qual distro)?"*
+   Os comandos mudam completamente entre eles — nunca assuma, nunca misture.
 1. **Destrutivo = confirmado.** Antes de qualquer operação em massa
    (`apply_plan`, muitos `move`/`write_text`), mostre o plano ao usuário e espere
-   o OK. Exclusão via `apply_plan`/`delete` vai para a **lixeira XDG** (tem
+   o OK. Exclusão via `apply_plan`/`delete` vai para a **lixeira** (tem
    `undo_last`), mas mesmo assim confirme.
 2. **A trava anticatástrofe é intransponível.** O agente recusa localmente
    fork bomb, `mkfs`, `wipefs`, `dd of=/dev/*`, `shred` em dispositivo, escrita
@@ -39,32 +42,38 @@ conexões de **saída** — nada de portas abertas, firewall, port forwarding ou
    `.ssh`, `.gnupg`, `.config`, `.password-store`, `.aws`, `.kube`, `ponte-agent`.
 4. **Tokens e senhas nunca aparecem em log.** Token do agente via flag
    `--token` (salva em `ponte.config.json` local). Senha de sudo: só pelo
-   padrão seguro da seção "Sudo sem expor senha".
+   padrão seguro da seção "Sudo sem expor senha" (Linux).
 5. **Caminhos absolutos.** Caminhos relativos resolvem contra o CWD do agente
-   (a pasta onde ele foi iniciado, tipicamente `~/ponte-agent`) — use sempre
-   `/home/usuario/...`.
+   (a pasta onde ele foi iniciado, tipicamente `~/ponte-agent` ou
+   `%USERPROFILE%\ponte-agent`) — use sempre `/home/usuario/...` no Linux ou
+   `C:\Users\usuario\...` no Windows.
 6. **Um comando por vez de qualidade.** Prefira comandos pequenos e legíveis
-   (o usuário pode ler no painel). Combine com `&&`/`;` quando fizer sentido.
+   (o usuário pode ler no painel). Combine com `&&`/`;` quando fizer sentido
+   (no Windows PowerShell, use `;`).
 
 ## Pré-requisitos — mostre isto ao usuário
 
-No **PC do usuário** (Linux), ele precisa de: Node.js **18+**, `curl` e um
-terminal. Confira/instale conforme a distro:
+No **PC do usuário**, ele precisa de Node.js **18+**, `curl` (Linux) ou
+`curl.exe` (Windows já traz nativo) e um terminal. Confira/instale conforme o SO:
 
-| Distro        | Comando para instalar                                      |
-|---------------|------------------------------------------------------------|
-| Arch/CachyOS  | `sudo pacman -S --needed nodejs curl`                       |
+| SO/Distro     | Comando para instalar |
+|---------------|-----------------------|
+| Windows 10/11 | `winget install OpenJS.NodeJS.LTS` (ou baixe do nodejs.org) — `curl.exe` já vem no sistema |
+| Arch/CachyOS  | `sudo pacman -S --needed nodejs curl` |
 | Debian/Ubuntu | `sudo apt install -y curl && curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt install -y nodejs` |
-| Fedora        | `sudo dnf install -y nodejs curl`                           |
-| openSUSE      | `sudo zypper install -y nodejs20 curl`                      |
+| Fedora        | `sudo dnf install -y nodejs curl` |
+| openSUSE      | `sudo zypper install -y nodejs20 curl` |
 
-Verificação: `node --version` (≥ 18) e `curl --version`.
+Verificação: `node --version` (≥ 18) e `curl --version` (Linux) ou
+`curl.exe --version` (Windows, no PowerShell use **sempre** `curl.exe` com a
+extensão — `curl` sem `.exe` pode ser um alias do `Invoke-WebRequest`).
 
 No **servidor onde VOCÊ roda** (VM, container, seu próprio servidor):
 
 - Node.js 18+ (para o relay Next.js) e Python 3 (opcional, para o operador CLI)
 - Uma **URL pública HTTPS** apontando para o relay (preview da plataforma,
-  túnel como `ngrok`/`cloudflared`, ou servidor próprio). O PC do usuário
+  túnel como `ngrok`/`cloudflared`, ou servidor próprio) — como descobrir na
+  seção **"A URL pública — descubra, nunca adivinhe"** abaixo. O PC do usuário
   só precisa alcançar essa URL.
 - `openssl` para gerar os tokens.
 
@@ -105,14 +114,52 @@ Edite `next.config.ts` e deixe apenas `cacheComponents: false`; se existir a
 linha `partialPrefetching: true`, **remova-a também** (depende de
 `cacheComponents`). Depois reinicie o `npm run dev`.
 
-Valide: `curl -s https://SEU-RELAY/api/ponte/status` → deve responder
-`{"ok":true,"connected":false,...}`. Se vier HTML de erro 500, releia o log do
-dev — quase sempre é o `cacheComponents` do tópico acima.
+Valide **local** primeiro: `curl -s http://127.0.0.1:3000/api/ponte/status` →
+deve responder `{"ok":true,"connected":false,...}`. Se vier HTML de erro 500,
+releia o log do dev — quase sempre é o `cacheComponents` do tópico acima.
+A validação **pública** (URL que o agente vai usar) vem na seção abaixo — faça
+antes da Fase 2.
 
 **Importante:** o dev server precisa **herdar** os tokens exportados. Se
 reiniciar o server, reexporte antes. A URL pública do preview pode mudar a
 cada rebuild — confira e, se mudar, o agente precisa ser religado com a URL
 nova (`--server NOVA_URL --save`).
+
+## A URL pública — descubra, nunca adivinhe
+
+O agente precisa de uma URL pública HTTPS que chegue ao relay. Descubra nesta
+ordem — e **nunca teste candidatos inventados** (wildcard, id chutado, grep em
+processos): URL errada devolve 404 e só queima tempo e chamadas de ferramenta.
+
+1. **Contexto da plataforma.** Em previews por sessão (ex.: z.ai/space-z), a
+   URL é `https://preview-chat-<CHAT_ID>.space-z.ai/` — o `CHAT_ID` é o campo
+   `chat_id` do metadata da conversa (vem no contexto de cada mensagem).
+2. **Variáveis de ambiente:** `env | grep -iE 'preview|url|host|domain|bot'` —
+   muitas plataformas exportam o domínio público ou o id dele.
+3. **Pergunte ao usuário** — ele vê a URL na própria janela: *"me cola a URL
+   de preview que aparece aí no navegador"*.
+4. **Plano B — túnel rápido, sem conta** (se nada acima existir):
+
+   ```bash
+   curl -fLo cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+   chmod +x cloudflared && ./cloudflared tunnel --url http://localhost:3000
+   ```
+
+   Anote a `https://...trycloudflare.com` impressa no log. (ngrok também
+   serve, mas exige conta/authtoken.) Se o túnel cair, reexecute — a URL muda
+   a cada execução e o agente precisa ser religado com a nova.
+
+Valide a URL escolhida **antes da Fase 2** — local e público devem responder
+o mesmo JSON:
+
+```bash
+curl -s http://127.0.0.1:3000/api/ponte/status   # relay no ar
+curl -s https://A-URL/api/ponte/status           # roteamento externo OK
+```
+
+Local ok + público 404 = o relay está bem; o problema é roteamento/gateway.
+Volte aos passos 1–3 ou use o túnel (4). **Só siga para a Fase 2 com o público
+respondendo** — senão o agente do usuário vai pollar para o nada.
 
 ## Painel web — mande a URL ao usuário
 
@@ -134,7 +181,10 @@ peça para o usuário conferir a luz verde lá.
 
 ## Fase 2 — Instalar o agente no PC do usuário
 
-Entregue ao usuário **exatamente este bloco** (substitua URL e TOKEN):
+### Linux
+
+Entregue ao usuário **exatamente este bloco** (substitua URL pela URL pública
+validada na seção anterior e TOKEN pelo `PONTE_AGENT_TOKEN`):
 
 ```bash
 mkdir -p ~/ponte-agent && cd ~/ponte-agent
@@ -142,11 +192,27 @@ curl -fso agent.js https://SEU-RELAY/api/ponte/download
 node agent.js --server https://SEU-RELAY --token PONTE_AGENT_TOKEN --save
 ```
 
+### Windows (PowerShell)
+
+```powershell
+mkdir "$HOME\ponte-agent" -Force; cd "$HOME\ponte-agent"
+curl.exe -fso agent.js https://SEU-RELAY/api/ponte/download
+node agent.js --server https://SEU-RELAY --token PONTE_AGENT_TOKEN --save
+```
+
+No Windows, caminhos absolutos são `C:\Users\usuario\...`; para religar depois:
+`cd $HOME\ponte-agent; node agent.js`. **Nunca** digite `curl` sem `.exe` no
+PowerShell antigo — é outro programa. Se o usuário não tem `winget`, o Node vem
+do instalador do nodejs.org (marcar "Add to PATH").
+
+### Nos dois casos
+
 - Alternativa quando este repo é público:
   `curl -fso agent.js https://raw.githubusercontent.com/MicaelSanPedro/ponte-local/main/agente/agent.js`
 - Peça para ele **manter o terminal aberto** (o agente roda em primeiro plano;
   o banner mostra modo, escopo e proteções).
-- Próximas vezes: `~/ponte-agent/rodar.sh` (relê `ponte.config.json`).
+- Próximas vezes: `~/ponte-agent/rodar.sh` (Linux, relê `ponte.config.json`) ou
+  `cd $HOME\ponte-agent; node agent.js` (Windows).
 - O `AGENT_TOKEN` é sensível: entregue no canal privado onde o usuário roda
   os comandos. Nunca versionado.
 
@@ -182,10 +248,13 @@ python3 ponte.py --drain      # lê resultados pendentes
 PONTE_WAIT_S=300 python3 ponte.py ...   # espera mais (modo supervisionado)
 ```
 
+No Windows, os caminhos das ações viram `C:\Users\usuario\...` — o agente
+aceita ambos os estilos conforme o SO dele.
+
 | Ação | Args (JSON) | O que faz |
 |------|-------------|-----------|
 | `ping` | `{}` | Latência, CPU, RAM, Node, modo do agente |
-| `list` | `{"path":"/home/u/Downloads"}` | Lista pasta (nome, pasta?, bytes, mtime) |
+| `list` | `{"path":"C:\\Users\\u\\Downloads"}` | Lista pasta (nome, pasta?, bytes, mtime) |
 | `tree` | `{"path":"...","depth":2}` | Árvore (profundidade máx. 4) |
 | `read_text` | `{"path":"..."}` | Lê arquivo texto |
 | `write_text` | `{"path":"...","content":"...","overwrite":true}` | Cria/sobrescreve (antigo → lixeira) |
@@ -201,7 +270,7 @@ PONTE_WAIT_S=300 python3 ponte.py ...   # espera mais (modo supervisionado)
 | `duplicates` | `{"path":"...","minSizeBytes":1048576}` | Duplicados (tamanho→md5) + espaço recuperável |
 | `read_binary` | `{"path":"..."}` | Arquivo binário em base64 (máx 8 MB) |
 | `write_binary` | `{"path":"...","base64":"...","overwrite":true}` | Grava binário (máx 8 MB) |
-| `run_command` | `{"command":"...","cwd":"/home/u","timeoutMin":3}` | Shell — exige modo habilitado (abaixo) |
+| `run_command` | `{"command":"...","cwd":"C:\\Users\\u","timeoutMin":3}` | Shell — exige modo habilitado (abaixo) |
 
 Resposta de cada comando: `{"id","ok","data"|"error","durationMs","ts"}`.
 
@@ -215,12 +284,18 @@ Resposta de cada comando: `{"id","ok","data"|"error","durationMs","ts"}`.
 
 Só o usuário pode trocar de modo (digitar o flag no terminal DELE). Peça com
 clareza, ex.: *"Ctrl+C no terminal do agente e rode `node agent.js --auto --save`
-— isso me dá execução direta com a trava anticatástrofe, ok?"*
+— isso me dá execução direta com a trava anticatástrofe, ok?"* (no Windows,
+`Ctrl+C` e o mesmo comando no PowerShell).
 
 Ao comandar em modo supervisionado, use `PONTE_WAIT_S=150` (ou mais) — a
 espera padrão do operador precisa cobrir os 60 s do prompt + execução.
 
-## Sudo sem expor senha (padrão seguro) — só com autorização explícita
+## Sudo sem expor senha (padrão seguro) — Linux, só com autorização explícita
+
+*(No Windows não há sudo: `run_command` roda com os privilégios do usuário do
+terminal. Se um comando precisar de admin, peça para o usuário fechar o agente
+e reabrir o PowerShell com "Executar como administrador" antes de religar — a
+decisão continua sendo fisicamente dele.)*
 
 Quando um comando precisa de sudo e o usuário autorizou (idealmente forneceu a
 senha ou já configurou NOPASSWD):
@@ -247,14 +322,15 @@ sudo -S bash -c 'echo "usuario ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-nopa
 | Sintoma | Causa | Correção |
 |---------|-------|----------|
 | `Comando vazio` no `run_command` | chave errada no args | a chave é **`command`**, não `comando` |
-| `Pasta protegida no caminho: ponte-agent` | caminho relativo resolveu contra o CWD do agente (a pasta dele é bloqueada) | use **caminho absoluto** `/home/u/...` |
+| `Pasta protegida no caminho: ponte-agent` | caminho relativo resolveu contra o CWD do agente (a pasta dele é bloqueada) | use **caminho absoluto** (`/home/u/...` ou `C:\Users\u\...`) |
 | `Pasta protegida: .ssh/.config/...` | pasta sensível bloqueada | respeite; peça ao usuário, se preciso, por outro caminho |
+| PowerShell: "o termo curl não é reconhecido" ou resposta HTML | `curl` sem `.exe` virou `Invoke-WebRequest` | use **`curl.exe`** (com a extensão) |
 | Agente não conecta (`connected:false`) | URL/token errados ou server reiniciou sem tokens | confira `--server`, reexporte tokens, religue o agente |
 | `TEMPO ESGOTADO` com agente conectado | baseline do operador maior que os ids da instância nova | apague `.ponte_since_prod` em `PONTE_STATE_DIR` (corrigido: fallback é 0) |
 | `TEMPO ESGOTADO` em modo supervisionado | ninguém apertou `s` | reenvie; use `PONTE_WAIT_S=150+` |
 | `Fila de comandos cheia` | agente offline acumulando | verifique `--status`; o agente pula histórico com `fresh=true` |
-| `Fora do escopo` | caminho fora da home | só `/home/usuario/**` é permitido |
-| Base64 grande falha | > 8 MB | divida o arquivo ou use `run_command` (curl/wget no PC) |
+| `Fora do escopo` | caminho fora da home | só a home do usuário é permitida (Linux: `/home/u/**`; Windows: `C:\Users\u\**`) |
+| Base64 grande falha | > 8 MB | divida o arquivo ou use `run_command` (curl no PC) |
 | Comando some após rebuild do relay | URL de preview mudou | religue agente com `--server NOVA_URL --save` |
 
 ## Limites técnicos
@@ -273,9 +349,11 @@ sudo -S bash -c 'echo "usuario ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-nopa
 ## Atualizar o agente no PC do usuário
 
 ```bash
-# nova versão deste repo: baixe e envie via write_binary para /home/u/Downloads/
-# no PC do usuário:
+# nova versão deste repo: baixe e envie via write_binary para ~/Downloads/ (ou C:\Users\u\Downloads)
+# no PC do usuário (Linux):
 cp ~/Downloads/agent-vNOVA.js ~/ponte-agent/agent.js
+# no PC do usuário (Windows/PowerShell):
+copy "$HOME\Downloads\agent-vNOVA.js" "$HOME\ponte-agent\agent.js"
 # Ctrl+C no agente e religue no modo escolhido (--auto --save / --allow-run --save)
 ```
 
