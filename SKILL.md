@@ -205,6 +205,16 @@ No Windows, caminhos absolutos são `C:\Users\usuario\...`; para religar depois:
 PowerShell antigo — é outro programa. Se o usuário não tem `winget`, o Node vem
 do instalador do nodejs.org (marcar "Add to PATH").
 
+A partir do agente **v1.3.0**, o `run_command` funciona nos dois sistemas: no
+Linux via `/bin/bash`, no Windows via `cmd.exe` (o shell que o Node usa
+nativamente — comandos ensinados ao usuário no Windows devem ser cmd/PowerShell).
+A lixeira do agente no Windows é uma **pasta interna**
+(`%USERPROFILE%\.local\share\Trash`) com `undo_last` — **não** é a Lixeira do
+Windows; diga isso ao usuário se ele perguntar. A trava anticatástrofe também
+cobre Windows: bloqueia `format`, `diskpart`, `cipher /w`, `vssadmin delete
+shadows` e `rd /s`/`del /s`/`Remove-Item -Recurse` apontando para raiz de
+drive, `C:\Windows`, `C:\Program Files` ou `$HOME`.
+
 ### Nos dois casos
 
 - Alternativa quando este repo é público:

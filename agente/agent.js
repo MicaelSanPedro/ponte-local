@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Ponte Local — Agente v1.2.0
+ * Ponte Local — Agente v1.3.0 (Windows + Linux)
  * Roda no SEU computador e executa, sob comando do relay, uma lista FIXA de
  * operações de arquivo. Sem shell, sem execução de programas, sem rede além
  * do próprio relay.
@@ -20,9 +20,9 @@ const path = require("path");
 const os = require("os");
 const http = require("http");
 const https = require("https");
-const { execFile } = require("child_process");
+const { execFile, exec } = require("child_process");
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const REQUEST_TIMEOUT_MS = 15000;
 const SCRIPT_DIR = __dirname;
 const CONFIG_FILE = path.join(SCRIPT_DIR, "ponte.config.json");
@@ -252,6 +252,9 @@ function fmtMB(n) {
 // No modo supervisionado não se aplica (quem decide é o humano, com o aviso).
 const ALVO_SISTEMA = /^(~\/?|\$HOME\/?|\/\*?|\/home\/?|\/home\/\*|\/boot(\/.*)?|\/etc(\/.*)?|\/usr(\/.*)?|\/var(\/.*)?|\/lib(\/.*)?|\/opt(\/.*)?|\/mnt(\/.*)?|\/media(\/.*)?|\*)$/;
 
+// Alvos catastróficos no Windows (raiz de drive, pastas do sistema, home).
+const ALVO_SISTEMA_WIN = /^(?:[a-z]:\\?|[a-z]:\\windows(?:\\.*)?|[a-z]:\\program files(?: \(x86\))?(?:\\.*)?|\$home|~\/?|%systemroot%)$/i;
+
 function dangerCheck(cmdline) {
   // fork bomb clássico: :(){ :|:& };:
   if (/:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;?/.test(cmdline)) return "fork bomb";
@@ -277,32 +280,80 @@ function dangerCheck(cmdline) {
         return "rm recursivo em alvo de sistema (" + alvo + ")";
     }
   }
+  // ---- Windows (cmd.exe / PowerShell): catástrofes equivalentes ----
+  if (/\bformat\s+[a-z]:/i.test(cmdline)) return "format (formatar volume)";
+  if (/\bdiskpart\b/i.test(cmdline)) return "diskpart (gerenciamento de disco)";
+  if (/\bvssadmin\b[^|;&]*delete\s+shadows/i.test(cmdline))
+    return "vssadmin delete shadows (apagar backups de sombra)";
+  if (/\bcipher\b\s+\/w/i.test(cmdline)) return "cipher /w (apagamento seguro do disco)";
+  // Alvo do Windows é catastrófico se (após tirar aspas e wildcards finais)
+  // é raiz de drive, pasta do sistema ou home. Testa tokens isolados E pares
+  // adjacentes — senão "C:\Program Files\app" quebra em "C:\Program"+"Files\app".
+  const catWin = (alvo) => {
+    let a = alvo.replace(/["']/g, "").trim();
+    a = a.replace(/\\?\*(?:\.\*)?$/, "").trim(); // C:\*.* → C:\ ; C:\* → C:\
+    if (!a) return false;
+    return ALVO_SISTEMA_WIN.test(a);
+  };
+  const acharAlvo = (resto, ehFlag) => {
+    const toks = resto.trim().split(/\s+/);
+    for (let i = 0; i < toks.length; i++) {
+      if (!toks[i] || ehFlag(toks[i])) continue;
+      if (catWin(toks[i])) return toks[i];
+      if (i + 1 < toks.length && !ehFlag(toks[i + 1]) && catWin(toks[i] + " " + toks[i + 1]))
+        return toks[i] + " " + toks[i + 1];
+    }
+    return null;
+  };
+  for (const seg of cmdline.split(/\n|;|\|\||\|/)) {
+    const s = seg.trim();
+    const mRd = s.match(/^(?:rd|rmdir)\s+((?:\/[a-z]+\s+)*)(.+)$/i);
+    if (mRd && /\/s/i.test(mRd[1])) {
+      const alvo = acharAlvo(mRd[2], (t) => t.startsWith("/"));
+      if (alvo) return "rd recursivo em alvo de sistema (" + alvo + ")";
+    }
+    const mDel = s.match(/^del\s+((?:\/[a-z]+\s+)*)(.+)$/i);
+    if (mDel && /\/s/i.test(mDel[1])) {
+      const alvo = acharAlvo(mDel[2], (t) => t.startsWith("/"));
+      if (alvo) return "del /s em alvo de sistema (" + alvo + ")";
+    }
+    if (/\bremove-item\b/i.test(s) && /-recurse/i.test(s)) {
+      const depois = s.replace(/^[\s\S]*?\bremove-item\b\s*/i, "");
+      const alvo = acharAlvo(depois, (t) => t.startsWith("-"));
+      if (alvo) return "Remove-Item recursivo em alvo de sistema (" + alvo + ")";
+    }
+  }
   return null;
 }
 
 function executarComando(cmdline, cwd, timeoutMin) {
   const t0 = Date.now();
   return new Promise((resolve) => {
-    execFile(
-      "/bin/bash",
-      ["-c", cmdline],
-      {
-        cwd,
-        timeout: timeoutMin * 60000,
-        maxBuffer: 8 * 1024 * 1024,
-        encoding: "utf8",
-        stdio: ["inherit", "pipe", "pipe"],
-      },
-      (err, stdout, stderr) => {
-        resolve({
-          code: err && typeof err.code === "number" ? err.code : err ? 1 : 0,
-          stdout: String(stdout || ""),
-          stderr: String(stderr || ""),
-          mortoPorTimeout: !!(err && err.killed),
-          ms: Date.now() - t0,
-        });
-      }
-    );
+    const fim = (err, stdout, stderr) => {
+      resolve({
+        code: err && typeof err.code === "number" ? err.code : err ? 1 : 0,
+        stdout: String(stdout || ""),
+        stderr: String(stderr || ""),
+        mortoPorTimeout: !!(err && err.killed),
+        ms: Date.now() - t0,
+      });
+    };
+    const opts = {
+      cwd,
+      timeout: timeoutMin * 60000,
+      maxBuffer: 8 * 1024 * 1024,
+      encoding: "utf8",
+      windowsHide: true,
+    };
+    if (process.platform === "win32") {
+      // Windows: exec usa o ComSpec (cmd.exe), exatamente como o Node faz
+      // nativamente. stdin não pode ser "inherit" em exec — e o cmd não
+      // precisa dele (prompt interativo de sudo é coisa de Linux).
+      exec(cmdline, opts, fim);
+    } else {
+      // Linux/macOS: bash explícito, stdin herdado (sudo -S precisa).
+      execFile("/bin/bash", ["-c", cmdline], { ...opts, stdio: ["inherit", "pipe", "pipe"] }, fim);
+    }
   });
 }
 

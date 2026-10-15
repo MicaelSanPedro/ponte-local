@@ -79,7 +79,7 @@ Gere os seus com `openssl rand -hex 12`.
 
 ```
 SKILL.md         instruções completas para IAs instalarem e operarem a ponte
-agente/          agent.js (v1.2.0) + LEIA-ME.md + rodar.sh + atualizar.sh
+agente/          agent.js (v1.3.0, Windows + Linux) + LEIA-ME.md + rodar.sh + atualizar.sh
 relay/           ponte-store.ts + api/ponte/*/route.ts + painel + RESTAURAR.md
 operador/        ponte.py (CLI admin) + teste-ponte*.sh (E2E)
 ```
