@@ -1,57 +1,102 @@
-# Ponte Local 🌉
+<div align="center">
 
-Deixe sua IA operar o seu PC Linux remotamente, pelo chat — com segurança de verdade.
-O agente é **um único arquivo Node.js, sem dependências**; o relay é um conjunto de API
-routes Next.js. Nada de portas abertas: o agente só faz requests de **saída**.
+<img src="docs/banner.svg" alt="Ponte Local" width="100%"/>
 
-> 🤖 **Você é uma IA (Claude, ChatGPT, Cursor, agente de código)?**
-> Leia [`SKILL.md`](SKILL.md) — ele contém o passo a passo completo para você
-> instalar a ponte, guiar o usuário no que instalar e começar a operar.
+**Sua IA opera o seu PC pelo chat — com segurança de verdade.**
 
-## Como funciona
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-3fb950)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2018-3fb950)](https://nodejs.org)
+[![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20Windows-58a6ff)](#requisitos)
+[![Dependências do agente](https://img.shields.io/badge/depend%C3%AAncias%20do%20agente-0-3fb950)](#como-funciona)
+[![IA-ready](https://img.shields.io/badge/IA--ready-SKILL.md-bc8cff)](SKILL.md)
+[![PRs bem-vindos](https://img.shields.io/badge/PRs-bem--vindos-1f6feb)](#contribuindo)
+
+</div>
+
+---
+
+> 🤖 **Você é uma IA** (Claude, ChatGPT, Gemini, Cursor, agente de código)?
+> **Leia [`SKILL.md`](SKILL.md) primeiro.** Ele é uma skill completa: passo a passo
+> para você instalar a ponte, o que pedir ao usuário, a tabela das 20 ações e as
+> regras de segurança. Comece pela **Regra de Ouro #0: pergunte se o PC é Windows ou Linux.**
+
+## O que é
+
+Um **agente de um arquivo só** (`agent.js`, Node puro, zero dependências) roda no
+seu PC e conversa com a sua IA através de um **relay** (API routes Next.js que você
+hospeda numa VM). A IA enfileira comandos; o agente busca, executa localmente e
+devolve o resultado. Nada de portas abertas nem SSH: o agente só faz **requests de
+saída** (poll a cada 1,5 s), então funciona atrás de NAT e firewall domésticos.
 
 ```
-┌──────────────┐   poll (1,5s)    ┌─────────────────────┐   admin    ┌──────────┐
-│ SEU PC Linux │ ◄──────────────► │ relay Next.js       │ ◄────────► │   IA     │
-│  agent.js    │  GET  /poll      │ /api/ponte/*        │ injeta cmd │ (chat ou │
-│ (zero deps)  │  POST /result    │ URL pública https   │ + lê res.  │  agente) │
-└──────────────┘                  └─────────────────────┘            └──────────┘
+┌──────────────────┐  poll 1,5 s     ┌──────────────────────┐  admin token  ┌────────────┐
+│    SEU PC        │ ──────────────► │  relay Next.js       │ ────────────► │    IA      │
+│  Windows/Linux   │ ◄────────────── │  /api/ponte/*        │ ◄──────────── │ (chat ou   │
+│    agent.js      │  POST /result   │  URL pública https   │  injeta cmd   │  agente)   │
+│   (zero deps)    │                 │  fila + resultados   │  + lê resposta│            │
+└──────────────────┘                 └──────────────────────┘               └────────────┘
 ```
 
-- **Agente** (roda no seu PC): faz poll de comandos a cada 1,5 s, executa, devolve resultado. Zero dependências, roda em qualquer distro com Node 18+.
-- **Relay** (roda em VM/servidor): API routes que guardam a fila e os resultados em memória, com entrega exclusiva (claim/lease) e sequência persistida.
-- **Operador** (CLI Python na VM): `ponte.py` — a IA injeta comandos e lê resultados pelo terminal.
+- **Agente** (seu PC) — 20 ações de arquivo e comando, escopo travado na sua home,
+  lixeira com desfazer e trava anticatástrofe no próprio processo, antes de executar.
+- **Relay** (VM/servidor) — fila com entrega exclusiva (claim/lease), sequência
+  persistida em disco e painel web com status em tempo real.
+- **Operador** (CLI Python na VM) — `ponte.py`: a IA injeta comandos e lê resultados
+  pelo terminal, com binários em base64 (`enviar`/`pegar`).
 
-## Destaques
+## Segurança em camadas
 
-- 🔒 **Escopo travado na home** — `.ssh`, `.gnupg`, `.config`, `.password-store`, `.aws`, `.kube` são inacessíveis para o agente
-- 🗑️ **Exclusão = lixeira XDG** com log JSONL e `undo_last` — nada é apagado de verdade
-- 🧨 **Trava anticatástrofe** no modo autônomo: fork bomb, `mkfs`, `wipefs`, `dd of=/dev/*`, `shred` em dispositivo e `rm -r` de sistema são recusados localmente, antes de executar
-- 🎛️ **3 modos do `run_command`** — desligado (só arquivos), supervisionado (você aperta `s`/`N` no seu terminal) e autônomo — e a escalada é sempre **física**: só você, digitando o flag no seu PC
-- 📦 19 ações de arquivo: list, tree, search por conteúdo, organização com plano-aprovação, duplicados (md5), disk usage, transferência de arquivos em base64 (8 MB), e mais
-- 🖥️ **Painel web** com status, bloco de instalação pronto e resultados
+| Camada | O que faz |
+|--------|-----------|
+| 🔒 **Escopo na home** | O agente recusa qualquer caminho fora da home do usuário — `.ssh`, `.gnupg`, `.config`, `.password-store`, `.aws`, `.kube` e a própria pasta `ponte-agent` são inacessíveis |
+| 🗑️ **Lixeira + undo** | Nada é apagado de verdade: `delete` e substituições vão para a lixeira do agente, com log JSONL auditável e `undo_last`/`restore` |
+| 🧨 **Trava anticatástrofe** | No modo autônomo, comandos de destruição em massa são recusados localmente: fork bomb, `mkfs`, `wipefs`, `dd of=/dev/*`, `shred` em disco, `rm -r` de sistema — e, no Windows, `format`, `diskpart`, `cipher /w`, `vssadmin delete shadows`, `rd /s`/`del /s`/`Remove-Item -Recurse` em raiz de drive, `C:\Windows`, `C:\Program Files` ou `$HOME` |
+| 🎛️ **Escalada física** | `run_command` só funciona nos modos que **você** religa no seu terminal — a IA não consegue ligá-la sozinha, nunca |
+| 🔑 **Tokens separados** | Agente e operador usam tokens distintos; comandos de teste ficam num canal isolado |
+| 🧾 **Log JSONL** | Toda ação fica registrada em `ponte-log.jsonl`, com resumo e dados de undo |
+
+## Os 3 modos do `run_command`
+
+| Modo | Você religa com | Comportamento |
+|------|-----------------|---------------|
+| **Desligado** (padrão) | `node agent.js` | Só operações de arquivo — IA não executa comandos |
+| **Supervisionado** | `node agent.js --allow-run --save` | Cada comando aparece no **seu** terminal; `s`/`N` em 60 s, sem resposta = rejeita |
+| **Autônomo** | `node agent.js --auto --save` | Executa direto (loga `[AUTO] $ cmd`), **com a trava anticatástrofe sempre ativa** |
+
+A troca de modo é sempre **física**: só você, digitando o flag no terminal do seu PC.
 
 ## Requisitos
 
 | Onde | O quê |
 |------|-------|
-| Seu PC (Linux) | Node.js 18+, `curl` |
-| VM/servidor da IA | Node.js 18+ (Next.js), Python 3 (opcional), URL pública HTTPS para o relay |
+| **Seu PC** (Windows ou Linux) | Node.js 18+, `curl` (no Windows, o `curl.exe` nativo do PowerShell) |
+| **VM/servidor da IA** | Node.js 18+ para o relay (Next.js), Python 3 opcional para a CLI |
 
-## Quick start (manual)
+## Comece por aqui
 
-No **servidor** (onde sua IA roda) — detalhes completos em [`SKILL.md`](SKILL.md) e [`relay/RESTAURAR.md`](relay/RESTAURAR.md):
+### 🤖 Caminho 1 — deixe a IA instalar (recomendado)
+
+Abra um chat com sua IA e diga: *"leia https://github.com/MicaelSanPedro/ponte-local/blob/main/SKILL.md e instale a ponte pra mim"*. A skill guia tudo: relay, tokens, download do agente, validação e o primeiro comando.
+
+### 🖥️ Caminho 2 — manual
+
+**No servidor** (detalhes completos em [`SKILL.md`](SKILL.md) e [`relay/RESTAURAR.md`](relay/RESTAURAR.md)):
 
 ```bash
-npx create-next-app@latest ponte-relay --typescript --app --no-eslint --no-src-dir --import-alias "@/*"
-# copie relay/ponte-store.ts → src/lib/, relay/api/* → src/app/api/ponte/,
-# relay/painel/page.tsx → src/app/page.tsx, agente/agent.js → download/ponte-agent/
-export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)
-export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)
-npm install && npm run dev
+CI=1 npx create-next-app@latest ponte-relay --typescript --app --no-eslint --src-dir --import-alias "@/*"
+cd ponte-relay
+# copie os arquivos do repo conforme a tabela da SKILL.md:
+#   relay/ponte-store.ts  → src/lib/ponte-store.ts
+#   relay/api/*/route.ts  → src/app/api/ponte/*/route.ts
+#   relay/painel/page.tsx → src/app/page.tsx
+#   agente/agent.js       → download/ponte-agent/agent.js
+export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)   # vai para o seu PC
+export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)   # só para quem injeta comandos
+npm install lucide-react
+npm run dev    # Next.js 16+? deixe cacheComponents: false no next.config.ts (ver SKILL.md)
 ```
 
-No **seu PC** (com a URL pública do relay e o `PONTE_AGENT_TOKEN` que sua IA te passar):
+**No seu PC — Linux:**
 
 ```bash
 mkdir -p ~/ponte-agent && cd ~/ponte-agent
@@ -59,31 +104,73 @@ curl -fso agent.js https://raw.githubusercontent.com/MicaelSanPedro/ponte-local/
 node agent.js --server https://SEU-RELAY --token SEU_TOKEN --save
 ```
 
-Pronto — sua IA já pode `list`, `search`, organizar, mandar/receber arquivos e
-(assim que você liberar `--allow-run` ou `--auto`) rodar comandos no seu PC.
+**No seu PC — Windows (PowerShell):**
 
-## Segurança — o agente nunca
+```powershell
+mkdir "$HOME\ponte-agent" -Force; cd "$HOME\ponte-agent"
+curl.exe -fso agent.js https://raw.githubusercontent.com/MicaelSanPedro/ponte-local/main/agente/agent.js
+node agent.js --server https://SEU-RELAY --token SEU_TOKEN --save
+```
 
-- Sai do escopo da home do usuário ou acessa pastas sensíveis
-- Apaga de verdade (lixeira XDG + `undo_last`)
-- Executa comandos catastróficos (trava local, mesmo com aprovação humana)
-- Expõe a senha do sudo (comandos com sudo rodam no terminal do dono; padrão
-  seguro documentado no `SKILL.md` mantém a senha fora de qualquer log)
-- Aceita escalada de modo por mensagem — o flag é digitado no terminal do PC
+> ⚠️ No PowerShell, use **sempre** `curl.exe` — `curl` sem `.exe` é um alias do
+> `Invoke-WebRequest` e quebra o download. Próximas execuções: `~/ponte-agent/rodar.sh`
+> (Linux) ou `cd $HOME\ponte-agent; node agent.js` (Windows).
 
-**Tokens**: todos via variáveis de ambiente (`PONTE_AGENT_TOKEN`,
-`PONTE_ADMIN_TOKEN`, `PONTE_TEST_TOKEN`) — nada hardcoded, nada versionado.
-Gere os seus com `openssl rand -hex 12`.
+## As 20 ações do agente
 
-## Estrutura
+| Grupo | Ações |
+|-------|-------|
+| **Explorar** | `ping` · `list` · `tree` · `search` (nome ou conteúdo) · `free_space` · `disk_usage` |
+| **Arquivos** | `read_text` · `write_text` · `mkdir` · `move` · `rename` · `delete` → lixeira · `restore` · `undo_last` |
+| **Organizar** | `organize_plan` (propõe, não executa) · `apply_plan` (lote aprovado) · `duplicates` (md5 + espaço recuperável) |
+| **Binários** | `read_binary` · `write_binary` (base64, até 8 MB — via `ponte.py pegar`/`enviar`) |
+| **Comando** | `run_command` (com os 3 modos acima) |
+
+A referência completa com argumentos exatos está na [tabela da SKILL.md](SKILL.md#fase-4--operar-referência-das-ações).
+
+## Estrutura do repo
 
 ```
-SKILL.md         instruções completas para IAs instalarem e operarem a ponte
-agente/          agent.js (v1.3.0, Windows + Linux) + LEIA-ME.md + rodar.sh + atualizar.sh
-relay/           ponte-store.ts + api/ponte/*/route.ts + painel + RESTAURAR.md
-operador/        ponte.py (CLI admin) + teste-ponte*.sh (E2E)
+ponte-local/
+├── SKILL.md               ← entrada para IAs: instale e opere (comece aqui)
+├── agente/
+│   ├── agent.js           ← o agente inteiro: 1 arquivo, 0 dependências (v1.3.0)
+│   ├── LEIA-ME.md         ← manual do agente no PC do usuário
+│   ├── rodar.sh           ← religa lendo ponte.config.json (Linux)
+│   └── atualizar.sh       ← baixa a versão nova do agente (Linux)
+├── relay/
+│   ├── ponte-store.ts     ← estado do relay: fila, claim/lease, seq em disco
+│   ├── api/…/route.ts     ← poll · result · cmd · results · status · download
+│   ├── painel/page.tsx    ← painel web (status + bloco de instalação pronto)
+│   └── RESTAURAR.md       ← recriar o relay do zero numa VM nova
+├── operador/
+│   ├── ponte.py           ← CLI do operador (injeta comandos, lê resultados)
+│   └── teste-ponte*.sh    ← testes E2E de referência
+└── docs/banner.svg        ← banner do repo
 ```
+
+## Perguntas frequentes
+
+**A IA pode formatar meu PC?** Não. Comandos de destruição em massa são recusados
+no próprio agente, antes de executar; arquivos só são apagados para a lixeira, com
+undo; e fora da sua home o agente nem enxerga.
+
+**A IA pode ligar o `run_command` sozinha?** Não. O modo só muda com um flag digitado
+por você no terminal do seu PC — a escalada é física.
+
+**Preciso abrir portas no meu roteador?** Não. O agente só faz requests de saída
+para o relay; o que atravessa a internet é JSON de metadados (nada de conteúdo de
+arquivo no ar — binários vão em base64 sob demanda, por comando seu).
+
+**Funciona no Windows?** Sim, desde o agente v1.3.0: `run_command` via `cmd.exe`,
+trava anticatástrofe com padrões Windows e lixeira interna do agente (não é a
+Lixeira do Windows — restaure com `restore`/`undo_last`).
+
+## Contribuindo
+
+Issues e PRs são bem-vindos — especialmente relatos do agente em outras distros
+e no Windows. Para mudanças maiores, abra uma issue antes descrevendo o caso de uso.
 
 ## Licença
 
-MIT — use, modifique e compartilhe. Se te ajudou, uma ⭐ no repo vale ouro.
+[MIT](LICENSE) © MicaelSanPedro

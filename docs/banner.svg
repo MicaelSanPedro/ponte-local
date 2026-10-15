@@ -1,0 +1,49 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ponte Local — sua IA opera seu PC pelo chat">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#101b2b"/>
+    </linearGradient>
+    <linearGradient id="deck" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3fb950"/>
+      <stop offset="50%" stop-color="#58a6ff"/>
+      <stop offset="100%" stop-color="#bc8cff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="115%" r="90%">
+      <stop offset="0%" stop-color="#1f6feb" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#0d1117" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect width="1200" height="300" fill="url(#glow)"/>
+
+  <!-- ponte estilizada -->
+  <g stroke="url(#deck)" stroke-width="5" fill="none" stroke-linecap="round">
+    <path d="M 380 232 Q 600 92 820 232"/>
+    <line x1="380" y1="232" x2="820" y2="232" stroke-opacity="0.85"/>
+    <line x1="452" y1="199" x2="452" y2="231" stroke-opacity="0.55" stroke-width="3"/>
+    <line x1="524" y1="157" x2="524" y2="231" stroke-opacity="0.55" stroke-width="3"/>
+    <line x1="600" y1="145" x2="600" y2="231" stroke-opacity="0.55" stroke-width="3"/>
+    <line x1="676" y1="157" x2="676" y2="231" stroke-opacity="0.55" stroke-width="3"/>
+    <line x1="748" y1="199" x2="748" y2="231" stroke-opacity="0.55" stroke-width="3"/>
+  </g>
+  <g fill="url(#deck)">
+    <circle cx="380" cy="232" r="7"/>
+    <circle cx="820" cy="232" r="7"/>
+  </g>
+
+  <!-- nós: seu PC (esquerda) e IA (direita) -->
+  <g font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="17" fill="#8b949e" text-anchor="middle">
+    <text x="300" y="270">seu PC</text>
+    <text x="900" y="270">sua IA</text>
+  </g>
+  <rect x="245" y="180" width="110" height="40" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="300" y="206" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="19" fill="#3fb950" text-anchor="middle">agent.js</text>
+  <rect x="845" y="180" width="110" height="40" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="900" y="206" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="19" fill="#bc8cff" text-anchor="middle">chat IA</text>
+
+  <!-- título -->
+  <text x="600" y="86" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="58" font-weight="700" fill="#f0f6fc" text-anchor="middle" letter-spacing="6">PONTE LOCAL</text>
+  <text x="600" y="126" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="21" fill="#8b949e" text-anchor="middle">Sua IA opera o seu PC pelo chat — agente Node sem dependências, lixeira com undo e trava anticatástrofe</text>
+</svg>
