@@ -71,7 +71,7 @@ No **servidor onde VOCÊ roda** (VM, container, seu próprio servidor):
 ## Fase 1 — Subir o relay
 
 ```bash
-npx create-next-app@latest ponte-relay --typescript --app --no-eslint --no-src-dir --import-alias "@/*"
+CI=1 npx create-next-app@latest ponte-relay --typescript --app --no-eslint --no-src-dir --import-alias "@/*"
 cd ponte-relay
 # copie os arquivos do repo (tabela abaixo), depois:
 export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)   # vai para o usuário
@@ -93,8 +93,17 @@ npm install && npm run dev                         # porta 3000
 
 Se o projeto foi criado **sem** `src/`, ajuste os caminhos (`app/`, `lib/`).
 
+**Next.js 16+ (obrigatório):** versões novas do `create-next-app` vêm com
+`cacheComponents: true` no `next.config.ts`, e isso é **incompatível** com o
+`export const dynamic = "force-dynamic"` das routes (erro: *Route segment
+config \"dynamic\" is not compatible with nextConfig.cacheComponents*).
+Edite `next.config.ts` e deixe apenas `cacheComponents: false`; se existir a
+linha `partialPrefetching: true`, **remova-a também** (depende de
+`cacheComponents`). Depois reinicie o `npm run dev`.
+
 Valide: `curl -s https://SEU-RELAY/api/ponte/status` → deve responder
-`{"ok":true,"connected":false,...}`.
+`{"ok":true,"connected":false,...}`. Se vier HTML de erro 500, releia o log do
+dev — quase sempre é o `cacheComponents` do tópico acima.
 
 **Importante:** o dev server precisa **herdar** os tokens exportados. Se
 reiniciar o server, reexporte antes. A URL pública do preview pode mudar a
@@ -219,6 +228,7 @@ sudo -S bash -c 'echo "usuario ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-nopa
 | `Pasta protegida no caminho: ponte-agent` | caminho relativo resolveu contra o CWD do agente (a pasta dele é bloqueada) | use **caminho absoluto** `/home/u/...` |
 | `Pasta protegida: .ssh/.config/...` | pasta sensível bloqueada | respeite; peça ao usuário, se preciso, por outro caminho |
 | Agente não conecta (`connected:false`) | URL/token errados ou server reiniciou sem tokens | confira `--server`, reexporte tokens, religue o agente |
+| `TEMPO ESGOTADO` com agente conectado | baseline do operador maior que os ids da instância nova | apague `.ponte_since_prod` em `PONTE_STATE_DIR` (corrigido: fallback é 0) |
 | `TEMPO ESGOTADO` em modo supervisionado | ninguém apertou `s` | reenvie; use `PONTE_WAIT_S=150+` |
 | `Fila de comandos cheia` | agente offline acumulando | verifique `--status`; o agente pula histórico com `fresh=true` |
 | `Fora do escopo` | caminho fora da home | só `/home/usuario/**` é permitido |

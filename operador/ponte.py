@@ -47,7 +47,7 @@ def get_since():
         with open(BASELINE_FILE) as f:
             return int(f.read().strip())
     except Exception:
-        return 8  # baseline: resultados dos testes de homologação terminam no id 8
+        return 0  # instância nova: ids de resultado começam em 1
 
 
 def set_since(n):
