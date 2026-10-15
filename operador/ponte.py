@@ -12,11 +12,17 @@ import sys
 import time
 import urllib.request
 
-BASE = "http://127.0.0.1:3000"
-ADMIN_TOKEN = "bb094b43a4be17f1ad09c070112f0514"
+BASE = os.environ.get("PONTE_URL", "http://127.0.0.1:3000")
+# Token admin da ponte — exporte antes de usar:
+#   export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)   (o mesmo do relay)
+ADMIN_TOKEN = os.environ.get("PONTE_ADMIN_TOKEN", "")
 # Canal: "prod" (PC real do usuário) ou "test" (agente de teste na VM)
 CHANNEL = os.environ.get("PONTE_CHANNEL", "prod")
-BASELINE_FILE = "/home/z/my-project/scripts/.ponte_since_%s" % CHANNEL
+# Baseline de resultados lidos — salva junto ao script (ou em PONTE_STATE_DIR)
+BASELINE_FILE = os.path.join(
+    os.environ.get("PONTE_STATE_DIR", os.path.dirname(os.path.abspath(__file__))),
+    ".ponte_since_%s" % CHANNEL,
+)
 
 
 def req(path, body=None, method=None):
@@ -50,6 +56,11 @@ def set_since(n):
 
 
 def main():
+    if not ADMIN_TOKEN:
+        print("ERRO: PONTE_ADMIN_TOKEN não definido.")
+        print("  export PONTE_ADMIN_TOKEN=<o mesmo token configurado no relay>")
+        print("  (e PONTE_URL se o relay não estiver em http://127.0.0.1:3000)")
+        return 1
     if len(sys.argv) < 2:
         print("uso: ponte.py <ação> [args_json] | --status | --drain | pegar <remoto> <local> | enviar <local> <remoto>")
         return 1

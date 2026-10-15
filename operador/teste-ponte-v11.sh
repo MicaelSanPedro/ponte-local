@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Teste v1.1 da Ponte — novas ações (tree, disk_usage, duplicates, read/write_binary, run_command)
 set -e
-AGENT_TOKEN="9f3ce1a7b2d84e60f5a1c8b7-teste"
-ADMIN_TOKEN="bb094b43a4be17f1ad09c070112f0514"
+AGENT_TOKEN="${PONTE_TEST_TOKEN:?export PONTE_TEST_TOKEN antes (canal test)}"
+ADMIN_TOKEN="${PONTE_ADMIN_TOKEN:?export PONTE_ADMIN_TOKEN antes (o mesmo do relay)}"
 BASE="http://127.0.0.1:3000"
 AGENT_DIR="/home/z/my-project/download/ponte-agent"
 TEST_HOME="/home/z/ponte-teste-home2"

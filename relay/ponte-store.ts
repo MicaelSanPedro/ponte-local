@@ -4,6 +4,7 @@
 // apenas JSON de metadados/operações.
 
 import fs from "fs";
+import path from "path";
 
 export interface PonteCommand {
   id: number;
@@ -62,20 +63,28 @@ export function ponte(): PonteState {
   return s;
 }
 
-// Tokens fixos desta instância da ponte.
-// O AGENT_TOKEN é entregue ao usuário no chat privado; o ADMIN_TOKEN
-// é usado apenas por mim (dentro da VM) para injetar comandos.
-export const AGENT_TOKEN = "f4f50a789db13e5f40ffd8b0";
-// Token exclusivo para agentes de TESTE dentro da VM — nunca entregue ao usuário.
+// Tokens da sua instância da ponte — configure via variáveis de ambiente ANTES
+// de rodar o relay (o dev server precisa herdar as variáveis):
+//
+//   export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)   # entregue ao usuário
+//   export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)   # só você (operador/IA)
+//   export PONTE_TEST_TOKEN=$(openssl rand -hex 12)    # opcional (canal test)
+//
+// O AGENT_TOKEN vai no bloco de instalação que a IA entrega ao usuário.
+// O ADMIN_TOKEN é usado pelo operador (ponte.py) para injetar comandos.
+// Sem os dois primeiros, o relay recusa tudo com erro claro.
+export const AGENT_TOKEN = process.env.PONTE_AGENT_TOKEN || "";
+// Token exclusivo para agentes de TESTE — nunca entregue ao usuário.
 // Comandos do canal "test" só chegam a agentes autenticados com este token.
-export const TEST_AGENT_TOKEN = "9f3ce1a7b2d84e60f5a1c8b7-teste";
-export const ADMIN_TOKEN = "bb094b43a4be17f1ad09c070112f0514";
+export const TEST_AGENT_TOKEN = process.env.PONTE_TEST_TOKEN || "";
+export const ADMIN_TOKEN = process.env.PONTE_ADMIN_TOKEN || "";
 export const PONTE_VERSION = "1.1.0";
 export const CONNECTED_WINDOW_MS = 15_000;
 
 // Sequência persistida em disco: ids de comando NUNCA voltam atrás,
 // mesmo se o dev server reiniciar (evita agente perder comandos por cursor velho).
-const SEQ_FILE = "/home/z/my-project/.ponte-seq";
+// Sequência salva na raiz do projeto Next.js (cwd do dev server)
+const SEQ_FILE = process.env.PONTE_SEQ_FILE || path.resolve(process.cwd(), ".ponte-seq");
 
 function loadSeq(): number {
   try {

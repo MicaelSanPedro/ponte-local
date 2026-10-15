@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Teste ponta a ponta da Ponte Local — simula o PC do usuário dentro da VM
 set -e
-AGENT_TOKEN="f4f50a789db13e5f40ffd8b0"
-ADMIN_TOKEN="bb094b43a4be17f1ad09c070112f0514"
+AGENT_TOKEN="${PONTE_AGENT_TOKEN:?export PONTE_AGENT_TOKEN antes (o mesmo do relay)}"
+ADMIN_TOKEN="${PONTE_ADMIN_TOKEN:?export PONTE_ADMIN_TOKEN antes (o mesmo do relay)}"
 BASE="http://127.0.0.1:3000"
 AGENT_DIR="/home/z/my-project/download/ponte-agent"
 TEST_HOME="/home/z/ponte-teste-home"

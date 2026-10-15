@@ -10,3 +10,4 @@ ponte-update/
 node_modules/
 .next/
 .env*
+.ponte-seq

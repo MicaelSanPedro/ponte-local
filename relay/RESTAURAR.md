@@ -51,10 +51,18 @@ node ~/ponte-agent/agent.js --server https://NOVO-LINK --token SEU_TOKEN --save
 
 ## 5. Tokens
 
-Os tokens reais estão versionados em `relay/ponte-store.ts` (agente + admin) e `operador/ponte.py` (admin). Para trocá-los:
+Todos via variáveis de ambiente (nada versionado):
 
-1. Edite `ponte-store.ts` — são strings fixas comparadas no header `x-token` de cada rota
-2. Atualize `operador/ponte.py` (constante do admin)
-3. No PC, religue o agente com `--token NOVO_TOKEN --save`
+```bash
+export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)   # entregue ao usuário
+export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)   # operador/IA
+export PONTE_TEST_TOKEN=$(openssl rand -hex 12)    # opcional (canal test)
+```
+
+1. O relay lê `PONTE_AGENT_TOKEN`/`PONTE_ADMIN_TOKEN`/`PONTE_TEST_TOKEN` em `ponte-store.ts` — o dev server precisa herdar (exporte antes do `npm run dev`)
+2. O operador lê `PONTE_ADMIN_TOKEN` (e `PONTE_URL` se não for `http://127.0.0.1:3000`)
+3. No PC, o agente recebe o token do agente na instalação (`--token ... --save`, fica em `~/ponte-agent/ponte.config.json`)
+
+Trocou um token? Atualize o relay + operador, e religue o agente com `--token NOVO --save`.
 
 Estado da fila/resultados vive em `globalThis` (`__ponteState`) — nada é persistido em disco no relay. O histórico fica no PC (`~/ponte-agent/ponte-log.jsonl`).
