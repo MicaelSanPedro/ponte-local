@@ -71,13 +71,19 @@ No **servidor onde VOCÊ roda** (VM, container, seu próprio servidor):
 ## Fase 1 — Subir o relay
 
 ```bash
-CI=1 npx create-next-app@latest ponte-relay --typescript --app --no-eslint --no-src-dir --import-alias "@/*"
+CI=1 npx create-next-app@latest ponte-relay --typescript --app --no-eslint --src-dir --import-alias "@/*"
 cd ponte-relay
 # copie os arquivos do repo (tabela abaixo), depois:
 export PONTE_AGENT_TOKEN=$(openssl rand -hex 12)   # vai para o usuário
 export PONTE_ADMIN_TOKEN=$(openssl rand -hex 16)   # só você usa
-npm install && npm run dev                         # porta 3000
+npm install lucide-react                           # dependência do painel (ícones)
+npm run dev                                        # porta 3000
 ```
+
+Na sua VM, rode o dev server **em background e deixe no ar** (`nohup npm run dev &`,
+`setsid` ou `tmux`) — se a sessão morrer, a ponte cai e o agente fica esperando.
+Se a porta 3000 estiver ocupada, use `PORT=3001 npm run dev` e espalhe a nova URL
+para agente e operador.
 
 | Arquivo deste repo          | Destino no projeto Next.js           |
 |-----------------------------|--------------------------------------|
@@ -91,12 +97,10 @@ npm install && npm run dev                         # porta 3000
 | `relay/painel/page.tsx`     | `src/app/page.tsx`                   |
 | `agente/agent.js`           | `download/ponte-agent/agent.js` (a rota `/api/ponte/download` serve este caminho) |
 
-Se o projeto foi criado **sem** `src/`, ajuste os caminhos (`app/`, `lib/`).
-
 **Next.js 16+ (obrigatório):** versões novas do `create-next-app` vêm com
 `cacheComponents: true` no `next.config.ts`, e isso é **incompatível** com o
 `export const dynamic = "force-dynamic"` das routes (erro: *Route segment
-config \"dynamic\" is not compatible with nextConfig.cacheComponents*).
+config "dynamic" is not compatible with nextConfig.cacheComponents*).
 Edite `next.config.ts` e deixe apenas `cacheComponents: false`; se existir a
 linha `partialPrefetching: true`, **remova-a também** (depende de
 `cacheComponents`). Depois reinicie o `npm run dev`.
@@ -109,6 +113,24 @@ dev — quase sempre é o `cacheComponents` do tópico acima.
 reiniciar o server, reexporte antes. A URL pública do preview pode mudar a
 cada rebuild — confira e, se mudar, o agente precisa ser religado com a URL
 nova (`--server NOVA_URL --save`).
+
+## Painel web — mande a URL ao usuário
+
+O painel é a **homepage** do relay (`/`) e já vem pronto — não precisa criar
+nada. Assim que a Fase 1 validar, **mande o link ao usuário**: ele abre antes
+mesmo de instalar o agente. Atualiza a cada 3 s e mostra:
+
+- **Luz de conexão**: âmbar ("aguardando o seu computador") → verde pulsante
+  quando o PC conecta, com "último contato há Ns"
+- **Info da máquina**: `usuario@host`, CPU, RAM total/livre, sistema e escopo
+- **Bloco de instalação pronto** (URL + token preenchidos) com botão copiar —
+  usa `window.location.origin`, então em preview que muda de URL o usuário
+  sempre copia o link certo
+- **Regras que o agente não quebra**: escopo na home, lixeira com desfazer,
+  trava anticatástrofe, escalada de modo só física
+
+Use o painel como âncora visual: depois de cada mudança de modo do agente,
+peça para o usuário conferir a luz verde lá.
 
 ## Fase 2 — Instalar o agente no PC do usuário
 

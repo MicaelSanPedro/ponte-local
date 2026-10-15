@@ -91,7 +91,7 @@ export default function Home() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Ponte Local</h1>
             <p className="text-neutral-400 mt-1 text-sm sm:text-base">
-              O canal entre a minha VM e o seu CachyOS — seus arquivos nunca saem do seu PC.
+              O canal entre a VM da sua IA e o seu PC — seus arquivos nunca saem daqui.
             </p>
           </div>
           <span className="text-xs text-neutral-500 font-mono">
@@ -172,18 +172,16 @@ export default function Home() {
         >
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <BadgeCheck className="h-5 w-5 text-emerald-400" aria-hidden />
-            Como conectar seu CachyOS
+            Como conectar seu PC
           </h2>
           <ol className="list-decimal list-inside space-y-2 mt-4 text-sm text-neutral-300">
             <li>
-              Instale o Node (se ainda não tem):{" "}
-              <code className="text-xs bg-neutral-950 border border-neutral-800 rounded px-1.5 py-0.5">
-                sudo pacman -S --needed nodejs
-              </code>
+              Instale o Node.js 18+ se ainda não tem — a sua IA passa o comando
+              certo para a sua distro (Arch, Debian/Ubuntu, Fedora, openSUSE…).
             </li>
             <li>
               Cole o bloco abaixo no terminal — ele cria a pasta, baixa o agente direto da ponte
-              (sem zip, sem pendrive) e já salva a configuração para as próximas vezes:
+              e já salva a configuração para as próximas vezes:
             </li>
           </ol>
           <div className="mt-4 relative">
@@ -218,9 +216,8 @@ export default function Home() {
             permissão é sempre física, digitada por você).
           </p>
           <p className="text-xs text-neutral-500 mt-2">
-            Sem internet no navegador dessa máquina? Use o zip{" "}
-            <code className="text-xs">ponte-agent.zip</code> que enviei no chat — ele contém o
-            mesmo <code className="text-xs">agent.js</code>.
+            Sem navegador na máquina? O <code className="text-xs">agent.js</code> é um arquivo único e
+            autossuficiente — a sua IA pode entregá-lo por outro canal (pendrive, scp, etc.).
           </p>
         </section>
 
