@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Ponte Local — Agente v1.3.0 (Windows + Linux)
+ * Ponte Local — Agente v1.4.0 (Windows + Linux)
  * Roda no SEU computador e executa, sob comando do relay, uma lista FIXA de
  * operações de arquivo. Sem shell, sem execução de programas, sem rede além
  * do próprio relay.
@@ -12,6 +12,9 @@
  *  - Exclusões vão para a lixeira XDG do sistema (recuperáveis)
  *  - Tudo é registrado em ponte-log.jsonl (com desfazer)
  *  - Zero dependências: apenas Node.js puro
+ *  - Leitura universal (v1.4.0): qualquer FORMATO (identificado por magic
+ *    bytes) e qualquer TAMANHO (read_text/read_binary leem em pedaços com
+ *    offset + maxBytes e devolvem proximoOffset)
  */
 "use strict";
 
@@ -22,7 +25,7 @@ const http = require("http");
 const https = require("https");
 const { execFile, exec } = require("child_process");
 
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 const REQUEST_TIMEOUT_MS = 15000;
 const SCRIPT_DIR = __dirname;
 const CONFIG_FILE = path.join(SCRIPT_DIR, "ponte.config.json");
@@ -228,6 +231,235 @@ function looksBinary(rp) {
   } finally {
     fs.closeSync(fd);
   }
+}
+
+// ------------------------------------------------- leitura universal (v1.4.0)
+// FORMATO: identifica o tipo pela assinatura (magic bytes). TAMANHO:
+// read_text/read_binary aceitam offset+maxBytes e devolvem proximoOffset —
+// arquivos de qualquer tamanho são lidos em pedaços, sem estourar memória
+// nem o limite de corpo da ponte (12 MB).
+
+// Pura: identifica o formato pelos primeiros bytes (até 16). null = sem assinatura.
+function tipoPorAssinatura(head) {
+  const hex = head.toString("hex");
+  const txt = (o, l) => head.subarray(o, o + l).toString("latin1");
+  if (hex.startsWith("89504e470d0a1a0a")) return "png";
+  if (hex.startsWith("ffd8ff")) return "jpeg";
+  if (hex.startsWith("47494638")) return "gif";
+  if (hex.startsWith("424d")) return "bmp";
+  if (txt(0, 4) === "RIFF") {
+    const f = txt(8, 4);
+    if (f === "WEBP") return "webp";
+    if (f === "WAVE") return "wav";
+    if (f === "AVI ") return "avi";
+  }
+  if (txt(4, 4) === "ftyp") return "mp4"; // mp4/mov/m4a (assinatura no byte 4)
+  if (hex.startsWith("25504446")) return "pdf";
+  if (hex.startsWith("504b0304") || hex.startsWith("504b0506") || hex.startsWith("504b0708"))
+    return "zip"; // zip/docx/xlsx/jar/apk
+  if (hex.startsWith("1f8b")) return "gzip";
+  if (hex.startsWith("425a68")) return "bzip2";
+  if (hex.startsWith("fd377a585a00")) return "xz";
+  if (hex.startsWith("377abcaf271c")) return "7z";
+  if (hex.startsWith("526172211a07")) return "rar";
+  if (hex.startsWith("d0cf11e0a1b11ae1")) return "ole"; // .doc/.xls/.ppt antigos
+  if (hex.startsWith("494433")) return "mp3";
+  if (hex.startsWith("4f676753")) return "ogg";
+  if (hex.startsWith("664c6143")) return "flac";
+  if (hex.startsWith("7f454c46")) return "elf";
+  if (hex.startsWith("4d5a")) return "exe"; // MZ — .exe/.dll do Windows
+  if (hex.startsWith("00000100")) return "ico";
+  if (hex.startsWith("53514c69746520")) return "sqlite";
+  if (hex.startsWith("0061736d")) return "wasm";
+  if (hex.startsWith("cafebabe")) return "class"; // bytecode java
+  if (txt(0, 4) === "wOFF") return "woff";
+  if (txt(0, 4) === "wOF2") return "woff2";
+  if (hex.startsWith("00010000") || txt(0, 4) === "OTTO") return "fonte"; // ttf/otf
+  if (txt(0, 7) === "!<arch>") return "ar"; // .a/.deb
+  if (txt(0, 4) === "%!PS") return "postscript";
+  if (hex.startsWith("4c000000")) return "lnk"; // atalho .lnk do Windows
+  return null;
+}
+
+// Lê o início do arquivo e classifica: assinatura → tipo; sem assinatura →
+// texto (com encoding) ou binário genérico. Nunca joga erro em caso estranho.
+function sniffTipo(rp, size) {
+  if (size === 0) return { tipo: "vazio", provavelTexto: true, encoding: null };
+  const fd = fs.openSync(rp, "r");
+  let head;
+  try {
+    head = Buffer.alloc(Math.min(16, size));
+    fs.readSync(fd, head, 0, head.length, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const assinado = tipoPorAssinatura(head);
+  if (assinado) return { tipo: assinado, provavelTexto: false, encoding: null };
+  // ISO9660 esconde a assinatura em 0x8001
+  if (size > 0x8006) {
+    const fd2 = fs.openSync(rp, "r");
+    try {
+      const b = Buffer.alloc(5);
+      fs.readSync(fd2, b, 0, 5, 0x8001);
+      if (b.toString("latin1") === "CD001") return { tipo: "iso", provavelTexto: false, encoding: null };
+    } finally {
+      fs.closeSync(fd2);
+    }
+  }
+  // sem assinatura conhecida: amostra decide texto × binário
+  const fd3 = fs.openSync(rp, "r");
+  try {
+    const amostra = Buffer.alloc(Math.min(65536, size));
+    const n = fs.readSync(fd3, amostra, 0, amostra.length, 0);
+    const a = amostra.subarray(0, n);
+    if (a.length >= 2 && a[0] === 0xff && a[1] === 0xfe)
+      return { tipo: "texto", provavelTexto: true, encoding: "utf-16le" };
+    if (a.length >= 2 && a[0] === 0xfe && a[1] === 0xff)
+      return { tipo: "texto", provavelTexto: true, encoding: "utf-16be" };
+    let ruins = 0;
+    for (let i = 0; i < a.length; i++) {
+      const c = a[i];
+      if (c === 0 || (c < 32 && c !== 9 && c !== 10 && c !== 11 && c !== 12 && c !== 13) || c === 127)
+        ruins++;
+    }
+    if (ruins / a.length > 0.02) return { tipo: "desconhecido", provavelTexto: false, encoding: null };
+    return { tipo: "texto", provavelTexto: true, encoding: detectarEncoding(a) };
+  } finally {
+    fs.closeSync(fd3);
+  }
+}
+
+// Detecta encoding de uma amostra: BOM → utf-8 estrito → cp1252 → latin1.
+// A amostra pode ter sido cortada no meio do último caractere — o trim do
+// decodificador utf-8 (temMais=true) cuida disso antes de desistir do utf-8.
+function detectarEncoding(buf) {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return "utf-16le";
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return "utf-16be";
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return "utf-8";
+  if (decodificarUtf8Estrito(buf, true).ok) return "utf-8";
+  try {
+    new TextDecoder("windows-1252", { fatal: true }).decode(buf);
+    return "windows-1252";
+  } catch (_) {}
+  return "latin1";
+}
+
+// utf-8 ESTRITO de um buffer. Se o pedaço termina no meio de um caractere e
+// existem mais bytes no arquivo, corta o rabinho (o próximo read recomeça nele).
+function decodificarUtf8Estrito(buf, temMais) {
+  let fim = buf.length;
+  if (temMais && fim > 0) {
+    let i = fim - 1;
+    while (i >= 0 && (buf[i] & 0xc0) === 0x80) i--;
+    const nCont = fim - 1 - i;
+    if (i >= 0 && (buf[i] & 0x80) !== 0) {
+      // byte líder (11xxxxxx) no fim: se anuncia mais bytes do que existem,
+      // o caractere está incompleto — corta (o próximo read recomeça nele)
+      const lead = buf[i];
+      let esperado = 1;
+      if ((lead & 0xe0) === 0xc0) esperado = 2;
+      else if ((lead & 0xf0) === 0xe0) esperado = 3;
+      else if ((lead & 0xf8) === 0xf0) esperado = 4;
+      if (esperado > nCont + 1) fim = i;
+    }
+  }
+  if (fim === 0) return { ok: true, texto: "", usados: 0 };
+  try {
+    return { ok: true, texto: new TextDecoder("utf-8", { fatal: true }).decode(buf.subarray(0, fim)), usados: fim };
+  } catch (_) {
+    return { ok: false, texto: "", usados: 0 };
+  }
+}
+
+// utf-16: dados já alinhados em limite de unidade (2 bytes). Corta byte ímpar
+// e surrogate alta sem par do fim — ambos voltam no próximo pedaço.
+function decodificarUtf16Pedaco(dados, enc, temMais) {
+  let fim = dados.length - (dados.length % 2);
+  if (temMais && fim >= 2) {
+    const unidade =
+      enc === "utf-16be"
+        ? (dados[fim - 2] << 8) | dados[fim - 1]
+        : dados[fim - 2] | (dados[fim - 1] << 8);
+    if ((unidade & 0xfc00) === 0xd800) fim -= 2; // surrogate alta órfã
+  }
+  try {
+    const texto = new TextDecoder(enc, { fatal: false }).decode(dados.subarray(0, fim));
+    return { ok: true, texto, usados: fim };
+  } catch (_) {
+    return { ok: false, texto: "", usados: fim }; // build sem ICU completa
+  }
+}
+
+// Coração do read_text: transforma um pedaço de bytes em texto decente.
+// encoding "auto" detecta (BOM/utf-8/cp1252/latin1); ou força um fixo.
+// Retorna { encoding, conteudo, consumidos } — consumidos em BYTES do arquivo.
+function decodificarPedaco(buf, inicioAbs, temMais, encoding) {
+  const auto = !encoding || encoding === "auto";
+  if (!buf.length)
+    return { encoding: auto ? "utf-8" : encoding, conteudo: "", consumidos: 0 };
+
+  if (!auto && (encoding === "utf-16le" || encoding === "utf-16be")) {
+    let dados = buf;
+    let extras = 0;
+    if (
+      inicioAbs === 0 &&
+      buf.length >= 2 &&
+      ((encoding === "utf-16le" && buf[0] === 0xff && buf[1] === 0xfe) ||
+        (encoding === "utf-16be" && buf[0] === 0xfe && buf[1] === 0xff))
+    ) {
+      dados = buf.subarray(2);
+      extras = 2;
+    }
+    const r = decodificarUtf16Pedaco(dados, encoding, temMais);
+    if (!r.ok) throw new Error("Este Node não tem decodificador " + encoding + " — use read_binary");
+    return { encoding, conteudo: r.texto, consumidos: r.usados + extras };
+  }
+
+  if (!auto && (encoding === "windows-1252" || encoding === "latin1")) {
+    // 1 byte = 1 caractere: sem fronteiras, lê tudo
+    if (encoding === "latin1")
+      return { encoding, conteudo: buf.toString("latin1"), consumidos: buf.length };
+    try {
+      return { encoding, conteudo: new TextDecoder("windows-1252", { fatal: true }).decode(buf), consumidos: buf.length };
+    } catch (_) {
+      return { encoding: "latin1", conteudo: buf.toString("latin1"), consumidos: buf.length };
+    }
+  }
+
+  // auto: BOM utf-16 no primeiro pedaço declara o formato — decodifica direto
+  if (auto && inicioAbs === 0 && buf.length >= 2 && (buf[0] === 0xff || buf[0] === 0xfe)) {
+    if (buf[0] === 0xff && buf[1] === 0xfe && !(buf[2] === 0 && buf[3] === 0)) {
+      const r = decodificarUtf16Pedaco(buf.subarray(2), "utf-16le", temMais);
+      if (r.ok) return { encoding: "utf-16le", conteudo: r.texto, consumidos: r.usados + 2 };
+    } else if (buf[0] === 0xfe && buf[1] === 0xff && !(buf[2] === 0 && buf[3] === 0)) {
+      const r = decodificarUtf16Pedaco(buf.subarray(2), "utf-16be", temMais);
+      if (r.ok) return { encoding: "utf-16be", conteudo: r.texto, consumidos: r.usados + 2 };
+    }
+  }
+
+  // utf-8: primeiro pedaço pode ter BOM — tira
+  let dados = buf;
+  let extras = 0;
+  if (inicioAbs === 0 && dados.length >= 3 && dados[0] === 0xef && dados[1] === 0xbb && dados[2] === 0xbf) {
+    dados = dados.subarray(3);
+    extras = 3;
+  }
+  const prim = decodificarUtf8Estrito(dados, temMais);
+  if (prim.ok) return { encoding: "utf-8", conteudo: prim.texto, consumidos: prim.usados + extras };
+  // continuação de caractere cortado na fronteira do pedaço anterior: pula até 3 bytes
+  if (inicioAbs > 0) {
+    let pula = 0;
+    while (pula < 3 && pula < dados.length && (dados[pula] & 0xc0) === 0x80) pula++;
+    if (pula > 0) {
+      const r = decodificarUtf8Estrito(dados.subarray(pula), temMais);
+      if (r.ok) return { encoding: "utf-8", conteudo: r.texto, consumidos: r.usados + pula + extras };
+    }
+  }
+  // não é utf-8: textos antigos do Windows e depois latin1 puro
+  try {
+    return { encoding: "windows-1252", conteudo: new TextDecoder("windows-1252", { fatal: true }).decode(dados), consumidos: dados.length + extras };
+  } catch (_) {}
+  return { encoding: "latin1", conteudo: dados.toString("latin1"), consumidos: dados.length + extras };
 }
 
 function uniquePath(p) {
@@ -542,14 +774,57 @@ const ACTIONS = {
     const rp = assertAllowed(args.path);
     const s = fs.statSync(rp);
     if (!s.isFile()) throw new Error("Não é um arquivo");
-    if (s.size > 5 * 1024 * 1024) throw new Error("Arquivo grande demais (limite 5 MB)");
-    if (looksBinary(rp)) throw new Error("Parece binário — só leio texto");
-    const maxBytes = Math.min(300000, args.maxBytes || 200000);
+    const MAX_PEDACO = 2 * 1024 * 1024; // 2 MB por chamada — arquivo pode ter QUALQUER tamanho
+    const maxBytes = Math.min(MAX_PEDACO, Math.max(1, Number(args.maxBytes) || 200000));
+    const offset = Math.max(0, Math.floor(Number(args.offset) || 0));
+    const enc = args.encoding ? String(args.encoding) : "auto";
+    if (!["auto", "utf-8", "utf-16le", "utf-16be", "windows-1252", "latin1"].includes(enc))
+      throw new Error('encoding inválido: "' + enc + '" — use auto, utf-8, utf-16le, utf-16be, windows-1252 ou latin1');
+    if (offset >= s.size)
+      return { path: rp, bytes: s.size, encoding: enc === "auto" ? null : enc, offset, lidos: 0, caracteres: 0, truncado: false, proximoOffset: null, conteudo: "" };
+    if ((enc === "utf-16le" || enc === "utf-16be") && offset % 2 !== 0)
+      throw new Error("offset ímpar desalinha utf-16 — siga o proximoOffset devolvido nos pedaços anteriores");
+    // binário de verdade? avise com o tipo em vez de cuspir lixo
+    if (enc === "auto") {
+      const sn = sniffTipo(rp, s.size);
+      if (!sn.provavelTexto)
+        return {
+          path: rp,
+          bytes: s.size,
+          provavelBinario: true,
+          tipo: sn.tipo,
+          dica:
+            "Não é texto (tipo: " + sn.tipo + "). Use file_info para detalhes, " +
+            'read_binary {"path", "offset", "maxBytes"} para ler em base64 por pedaços, ' +
+            'ou read_text com encoding forçado se souber que é texto não-utf-8.',
+        };
+    }
     const fd = fs.openSync(rp, "r");
-    const buf = Buffer.alloc(Math.min(maxBytes, s.size));
-    fs.readSync(fd, buf, 0, buf.length, 0);
-    fs.closeSync(fd);
-    return { path: rp, bytes: s.size, truncado: s.size > buf.length, conteudo: buf.toString("utf8") };
+    try {
+      const buf = Buffer.alloc(Math.min(maxBytes, s.size - offset));
+      const n = fs.readSync(fd, buf, 0, buf.length, offset);
+      const r = decodificarPedaco(buf.subarray(0, n), offset, offset + n < s.size, enc);
+      const temMais = offset + r.consumidos < s.size;
+      const resp = {
+        path: rp,
+        bytes: s.size,
+        encoding: r.encoding,
+        offset,
+        lidos: r.consumidos,
+        caracteres: r.conteudo.length,
+        truncado: temMais,
+        proximoOffset: temMais ? offset + r.consumidos : null,
+        conteudo: r.conteudo,
+      };
+      if (temMais)
+        resp.dica =
+          'Ainda há ' + fmtMB(s.size - offset - r.consumidos) + ' — continue com read_text {"path":"' + rp + '","offset":' + (offset + r.consumidos) + '}';
+      if (r.encoding !== "utf-8")
+        resp.dica = (resp.dica ? resp.dica + ' · ' : "") + 'arquivo não é utf-8 (' + r.encoding + ') — nos próximos pedaços passe encoding:"' + r.encoding + '" para leitura byte-exata';
+      return resp;
+    } finally {
+      fs.closeSync(fd);
+    }
   },
 
   write_text: async (args) => {
@@ -892,12 +1167,61 @@ const ACTIONS = {
     const rp = assertAllowed(args.path);
     const s = fs.statSync(rp);
     if (!s.isFile()) throw new Error("Não é um arquivo");
-    const maxBytes = Math.min(8 * 1024 * 1024, args.maxBytes || 8 * 1024 * 1024);
-    if (s.size > maxBytes)
-      throw new Error(
-        "Arquivo tem " + fmtMB(s.size) + " — o limite da ponte é " + fmtMB(maxBytes)
-      );
-    return { path: rp, bytes: s.size, base64: fs.readFileSync(rp).toString("base64") };
+    const MAX_PEDACO = 6 * 1024 * 1024; // base64 ~8 MB — cabe na ponte (corpo 12 MB)
+    const offset = Math.max(0, Math.floor(Number(args.offset) || 0));
+    const maxBytes = Math.min(
+      MAX_PEDACO,
+      Math.max(1, Number(args.maxBytes) || (s.size <= MAX_PEDACO ? MAX_PEDACO : 4 * 1024 * 1024))
+    );
+    const tipo = sniffTipo(rp, s.size).tipo;
+    if (offset >= s.size)
+      return { path: rp, bytes: s.size, tipo, offset, lidos: 0, temMais: false, proximoOffset: null, base64: "" };
+    const fd = fs.openSync(rp, "r");
+    try {
+      const buf = Buffer.alloc(Math.min(maxBytes, s.size - offset));
+      fs.readSync(fd, buf, 0, buf.length, offset);
+      const temMais = offset + buf.length < s.size;
+      const resp = {
+        path: rp,
+        bytes: s.size,
+        tipo,
+        offset,
+        lidos: buf.length,
+        temMais,
+        proximoOffset: temMais ? offset + buf.length : null,
+        base64: buf.toString("base64"),
+      };
+      if (temMais)
+        resp.dica = 'Continue com read_binary {"path":"' + rp + '","offset":' + (offset + buf.length) + '} e junte os base64 na ordem';
+      return resp;
+    } finally {
+      fs.closeSync(fd);
+    }
+  },
+
+  file_info: async (args) => {
+    if (!args.path) throw new Error("Falta o caminho");
+    const rp = assertAllowed(args.path);
+    const s = fs.statSync(rp);
+    const info = { path: rp, pasta: s.isDirectory(), bytes: s.size, mtime: s.mtime.toISOString() };
+    if (!s.isFile()) {
+      info.tipo = "pasta";
+      info.dica = "Use list/tree para explorar pastas";
+      return info;
+    }
+    const sn = sniffTipo(rp, s.size);
+    info.tipo = sn.tipo;
+    info.provavelTexto = sn.provavelTexto;
+    if (sn.encoding) info.encoding = sn.encoding;
+    if (sn.tipo === "vazio") info.dica = "Arquivo com 0 bytes";
+    else if (sn.provavelTexto)
+      info.dica =
+        "Texto" + (sn.encoding && sn.encoding !== "utf-8" ? " (" + sn.encoding + ")" : "") +
+        " — use read_text; se for grande, siga o proximoOffset em pedaços" +
+        (sn.encoding && sn.encoding !== "utf-8" ? ' passando encoding:"' + sn.encoding + '"' : "");
+    else
+      info.dica = "Binário (" + sn.tipo + ") — read_binary {offset, maxBytes} lê em pedaços base64; junte na ordem para reconstruir";
+    return info;
   },
 
   write_binary: async (args) => {
@@ -1083,4 +1407,4 @@ async function main() {
 
 if (require.main === module) main().catch((e) => fail(e.message));
 // Exporta apenas para testes automatizados (nada roda quando requerido).
-module.exports = { dangerCheck, ALVO_SISTEMA, VERSION };
+module.exports = { dangerCheck, ALVO_SISTEMA, ALVO_SISTEMA_WIN, VERSION, tipoPorAssinatura, detectarEncoding, decodificarPedaco };

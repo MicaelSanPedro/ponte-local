@@ -17,7 +17,7 @@
 
 > 🤖 **Você é uma IA** (Claude, ChatGPT, Gemini, Cursor, agente de código)?
 > **Leia [`SKILL.md`](SKILL.md) primeiro.** Ele é uma skill completa: passo a passo
-> para você instalar a ponte, o que pedir ao usuário, a tabela das 20 ações e as
+> para você instalar a ponte, o que pedir ao usuário, a tabela das 21 ações e as
 > regras de segurança. Comece pela **Regra de Ouro #0: pergunte se o PC é Windows ou Linux.**
 
 ## O que é
@@ -37,8 +37,11 @@ saída** (poll a cada 1,5 s), então funciona atrás de NAT e firewall doméstic
 └──────────────────┘                 └──────────────────────┘               └────────────┘
 ```
 
-- **Agente** (seu PC) — 20 ações de arquivo e comando, escopo travado na sua home,
+- **Agente** (seu PC) — 21 ações de arquivo e comando, escopo travado na sua home,
   lixeira com desfazer e trava anticatástrofe no próprio processo, antes de executar.
+  Desde a **v1.4.0**, leitura universal: `file_info` identifica o formato por
+  magic bytes (png, pdf, exe, mp4, zip…) e `read_text`/`read_binary` leem
+  arquivos de **qualquer tamanho** por pedaços (`offset` → `proximoOffset`).
 - **Relay** (VM/servidor) — fila com entrega exclusiva (claim/lease), sequência
   persistida em disco e painel web com status em tempo real.
 - **Operador** (CLI Python na VM) — `ponte.py`: a IA injeta comandos e lê resultados
@@ -116,14 +119,14 @@ node agent.js --server https://SEU-RELAY --token SEU_TOKEN --save
 > `Invoke-WebRequest` e quebra o download. Próximas execuções: `~/ponte-agent/rodar.sh`
 > (Linux) ou `cd $HOME\ponte-agent; node agent.js` (Windows).
 
-## As 20 ações do agente
+## As 21 ações do agente
 
 | Grupo | Ações |
 |-------|-------|
-| **Explorar** | `ping` · `list` · `tree` · `search` (nome ou conteúdo) · `free_space` · `disk_usage` |
-| **Arquivos** | `read_text` · `write_text` · `mkdir` · `move` · `rename` · `delete` → lixeira · `restore` · `undo_last` |
+| **Explorar** | `ping` · `list` · `tree` · `search` (nome ou conteúdo) · `free_space` · `disk_usage` · `file_info` (tipo real por magic bytes) |
+| **Arquivos** | `read_text` (qualquer tamanho, em pedaços) · `write_text` · `mkdir` · `move` · `rename` · `delete` → lixeira · `restore` · `undo_last` |
 | **Organizar** | `organize_plan` (propõe, não executa) · `apply_plan` (lote aprovado) · `duplicates` (md5 + espaço recuperável) |
-| **Binários** | `read_binary` · `write_binary` (base64, até 8 MB — via `ponte.py pegar`/`enviar`) |
+| **Binários** | `read_binary` (por pedaços, sem teto de tamanho) · `write_binary` (até 8 MB — via `ponte.py pegar`/`enviar`) |
 | **Comando** | `run_command` (com os 3 modos acima) |
 
 A referência completa com argumentos exatos está na [tabela da SKILL.md](SKILL.md#fase-4--operar-referência-das-ações).
@@ -134,7 +137,7 @@ A referência completa com argumentos exatos está na [tabela da SKILL.md](SKILL
 ponte-local/
 ├── SKILL.md               ← entrada para IAs: instale e opere (comece aqui)
 ├── agente/
-│   ├── agent.js           ← o agente inteiro: 1 arquivo, 0 dependências (v1.3.0)
+│   ├── agent.js           ← o agente inteiro: 1 arquivo, 0 dependências (v1.4.0)
 │   ├── LEIA-ME.md         ← manual do agente no PC do usuário
 │   ├── rodar.sh           ← religa lendo ponte.config.json (Linux)
 │   └── atualizar.sh       ← baixa a versão nova do agente (Linux)
@@ -165,6 +168,11 @@ arquivo no ar — binários vão em base64 sob demanda, por comando seu).
 **Funciona no Windows?** Sim, desde o agente v1.3.0: `run_command` via `cmd.exe`,
 trava anticatástrofe com padrões Windows e lixeira interna do agente (não é a
 Lixeira do Windows — restaure com `restore`/`undo_last`).
+
+**E arquivos enormes (vídeo, ISO, log de 1 GB)?** A leitura é por pedaços:
+`file_info` diz o formato real (magic bytes), `read_text`/`read_binary` leem de
+`offset` em `offset` (até 6 MB por chamada) e devolvem `proximoOffset` — o
+arquivo inteiro nunca precisa caber na memória nem na ponte.
 
 ## Contribuindo
 

@@ -7,7 +7,8 @@ description: >-
   arquivos e comandos, com modos supervisionado/autônomo, lixeira com undo e
   trava anticatástrofe. Use quando o usuário pedir para você mexer no
   computador dele: organizar arquivos, procurar coisas, rodar comandos,
-  trocar configurações do desktop, automatizar tarefas locais.
+  trocar configurações do desktop, automatizar tarefas locais, ler arquivos
+  de qualquer formato ou tamanho (leitura por pedaços com file_info/offset).
 ---
 
 # Ponte Local — skill de operação remota do PC do usuário
@@ -266,7 +267,7 @@ aceita ambos os estilos conforme o SO dele.
 | `ping` | `{}` | Latência, CPU, RAM, Node, modo do agente |
 | `list` | `{"path":"C:\\Users\\u\\Downloads"}` | Lista pasta (nome, pasta?, bytes, mtime) |
 | `tree` | `{"path":"...","depth":2}` | Árvore (profundidade máx. 4) |
-| `read_text` | `{"path":"..."}` | Lê arquivo texto |
+| `read_text` | `{"path":"...","offset":0,"maxBytes":200000,"encoding":"auto"}` | Lê texto de QUALQUER tamanho em pedaços (siga `proximoOffset`); detecta utf-8/cp1252/utf-16/latin1; se for binário, responde com o TIPO em vez de cuspir lixo |
 | `write_text` | `{"path":"...","content":"...","overwrite":true}` | Cria/sobrescreve (antigo → lixeira) |
 | `search` | `{"path":"...","query":"termo","mode":"name"\|"content"}` | Busca por nome ou conteúdo |
 | `mkdir` | `{"path":"..."}` | Cria pasta(s) |
@@ -280,11 +281,44 @@ aceita ambos os estilos conforme o SO dele.
 | `free_space` | `{}` | Espaço livre/total dos discos |
 | `disk_usage` | `{"path":"...","depth":2}` | Tamanho por subpasta |
 | `duplicates` | `{"path":"...","minSizeBytes":1048576}` | Duplicados (tamanho→md5) + espaço recuperável |
-| `read_binary` | `{"path":"..."}` | Arquivo binário em base64 (máx 8 MB) |
+| `read_binary` | `{"path":"...","offset":0,"maxBytes":4194304}` | Binário em base64 por pedaços (≤ 6 MB/chamada) — junte os base64 NA ORDEM; o arquivo pode ter qualquer tamanho |
+| `file_info` | `{"path":"..."}` | Tipo REAL do arquivo (magic bytes: png, jpeg, pdf, zip, exe, mp4, sqlite, gzip, iso…) + tamanho + encoding se for texto + dica de como ler |
 | `write_binary` | `{"path":"...","base64":"...","overwrite":true}` | Grava binário (máx 8 MB) |
 | `run_command` | `{"command":"...","cwd":"C:\\Users\\u","timeoutMin":3}` | Shell — exige modo habilitado (abaixo) |
 
 Resposta de cada comando: `{"id","ok","data"|"error","durationMs","ts"}`.
+
+## Lendo qualquer arquivo — formato e tamanho (agente v1.4.0)
+
+Não existe mais "arquivo grande demais" nem "formato desconhecido". A receita,
+igual no Linux e no Windows:
+
+1. **Pergunte o que é**: `file_info` → tipo real por magic bytes (png, jpeg,
+   pdf, zip, exe, mp4, sqlite, ole/doc-antigo, gzip, iso…), tamanho e, se for
+   texto, o encoding detectado (utf-8, windows-1252, utf-16le/be, latin1).
+2. **Texto**: `read_text` e siga `proximoOffset` até vir `null` — cada resposta
+   traz `encoding`, `lidos`, `truncado` e `caracteres`. Se o encoding não for
+   `utf-8`, passe `"encoding"` explícito nos pedaços seguintes (a própria
+   `dica` da resposta avisa — importante para cp1252/utf-16 byte-exato).
+3. **Binário**: `read_binary` com `{"offset": proximoOffset}` e junte os
+   `base64` NA ORDEM. Pedaço máximo 6 MB (padrão 4 MB em arquivos grandes);
+   arquivos até 6 MB continuam vindo inteiros numa chamada só, como antes.
+4. `read_text` em binário NÃO devolve lixo: responde `{"provavelBinario":
+   true, "tipo": "png", ...}` — mude para `read_binary`/`file_info`.
+5. Texto utf-16 sem BOM é marcado como binário pela amostra — use
+   `file_info` + `encoding` explícito; com BOM, o `auto` decodifica direto.
+
+Exemplo — confirmar o formato de um vídeo de 2 GB e espiar o header, sem
+nunca carregar o arquivo inteiro:
+
+```json
+{"action":"file_info","args":{"path":"C:\\Users\\u\\Videos\\a.mp4"}}
+{"action":"read_binary","args":{"path":"C:\\Users\\u\\Videos\\a.mp4","maxBytes":65536}}
+```
+
+`file_info` responde `{"tipo":"mp4","bytes":2147483648,...}` e o primeiro
+pedaço traz os bytes do cabeçalho em base64. O mesmo funciona para log de
+1 GB (`read_text` em pedaços de 200 KB) e para ISO/imagem de disco.
 
 ## `run_command` — os 3 modos (escalada é FÍSICA)
 
@@ -342,15 +376,18 @@ sudo -S bash -c 'echo "usuario ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-nopa
 | `TEMPO ESGOTADO` em modo supervisionado | ninguém apertou `s` | reenvie; use `PONTE_WAIT_S=150+` |
 | `Fila de comandos cheia` | agente offline acumulando | verifique `--status`; o agente pula histórico com `fresh=true` |
 | `Fora do escopo` | caminho fora da home | só a home do usuário é permitida (Linux: `/home/u/**`; Windows: `C:\Users\u\**`) |
-| Base64 grande falha | > 8 MB | divida o arquivo ou use `run_command` (curl no PC) |
+| Pedaço de leitura falha | pedaço > 6 MB (`read_binary`) ou > 2 MB (`read_text`) | o ARQUIVO pode ter qualquer tamanho — reduza só o `maxBytes` do pedaço e siga o `proximoOffset` |
 | Comando some após rebuild do relay | URL de preview mudou | religue agente com `--server NOVA_URL --save` |
 
 ## Limites técnicos
 
 | Limite | Valor |
 |--------|-------|
-| Corpo de requisição na ponte | 1,5 MB |
-| Binário em base64 (`read/write_binary`) | 8 MB |
+| Corpo de requisição na ponte | 12 MB |
+| Pedaço de `read_text` | 2 MB por chamada (padrão 200 KB) |
+| Pedaço de `read_binary` | 6 MB por chamada (padrão 4 MB em arquivos grandes) |
+| Tamanho do ARQUIVO lido | ilimitado — leitura por pedaços (`offset` → `proximoOffset`) |
+| Binário gravado (`write_binary`) | 8 MB |
 | Timeout por `run_command` | 30 min |
 | Resposta do comando | 150.000 caracteres |
 | Tamanho do comando | 4.000 caracteres |

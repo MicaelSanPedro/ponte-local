@@ -15,17 +15,24 @@ VM**, sem você precisar copiar nada manualmente.
 
 ## Requisitos
 
-- Qualquer Linux (testado pra CachyOS/Arch) com Node.js 16 ou mais novo:
-  ```bash
-  sudo pacman -S --needed nodejs
-  ```
+- **Windows 10/11** ou **Linux** com Node.js 18+:
+  - Linux (Arch/CachyOS): `sudo pacman -S --needed nodejs`
+  - Windows: `winget install OpenJS.NodeJS.LTS` (ou instalador do nodejs.org)
 
 ## Como rodar (primeira vez)
 
-1. Abra o terminal na pasta onde está este arquivo.
+1. Abra o terminal na pasta onde está este arquivo (no Windows, PowerShell).
 2. Rode o comando que te passei no chat (o painel de status também mostra):
 
+   **Linux:**
+
    ```bash
+   node agent.js --server https://SEU-LINK-DE-PREVIEW --token SEU_TOKEN --save
+   ```
+
+   **Windows (PowerShell):**
+
+   ```powershell
    node agent.js --server https://SEU-LINK-DE-PREVIEW --token SEU_TOKEN --save
    ```
 
@@ -48,14 +55,15 @@ Para encerrar: `Ctrl+C`. Para religar: `node agent.js`.
 | `ping`           | Identifica a máquina (usuário, CPU, RAM, home, modo ativo)          |
 | `list`           | Lista o conteúdo de uma pasta                                       |
 | `tree`           | Visão em árvore de pastas (até 4 níveis)                            |
-| `read_text`      | Lê arquivos de texto (máx. 5 MB; binários são recusados)            |
+| `file_info`      | Diz o tipo REAL do arquivo (png, pdf, exe, mp4, zip…) pelo conteúdo + encoding se for texto |
+| `read_text`      | Lê texto de arquivos de QUALQUER tamanho, em pedaços (siga `proximoOffset`); detecta utf-8, cp1252, utf-16 e latin1 |
 | `write_text`     | Cria/sobrescreve arquivos de texto (antigo vai pra lixeira)         |
-| `read_binary`    | Transfere arquivo binário (até 8 MB) pela ponte em base64           |
+| `read_binary`    | Lê binário em base64 por pedaços — arquivo de qualquer tamanho      |
 | `write_binary`   | Recebe arquivo binário (até 8 MB) da ponte                          |
 | `search`         | Busca por nome ou por conteúdo em toda a home                       |
 | `mkdir`          | Cria pastas                                                         |
 | `move`/`rename`  | Move/renomeia arquivos e pastas                                     |
-| `delete`         | Manda para a **lixeira do sistema** (nunca apaga de verdade)        |
+| `delete`         | Manda para a **lixeira do agente** (nunca apaga de verdade)         |
 | `restore`        | Restaura item da lixeira                                            |
 | `organize_plan`  | Gera um plano de organização por tipo de arquivo                    |
 | `apply_plan`     | Executa o plano (com desfazer)                                      |
@@ -91,7 +99,7 @@ Se o agente rodar em background (sem terminal), nada é executado.
 
 - **Com o run_command desligado** (padrão): não executa nenhum comando de shell
 - **No modo supervisionado**: nenhum comando roda sem você digitar "s" no terminal — e cada comando aparece por completo antes
-- **No modo autônomo**: comandos rodam sem confirmação, MAS a trava anticatástrofe recusa os que destroem o sistema de uma vez, e TUDO fica registrado em `ponte-log.jsonl`
+- **No modo autônomo**: comandos rodam sem confirmação, MAS a trava anticatástrofe recusa os que destroem o sistema de uma vez (no Windows: `format`, `diskpart`, `rd /s` em raiz de drive etc.), e TUDO fica registrado em `ponte-log.jsonl`
 - Não acessa nada fora da sua home (ações de arquivo)
 - Não toca em pastas sensíveis: `.ssh`, `.gnupg`, `.config`, `.password-store`,
   `.aws`, `.kube`

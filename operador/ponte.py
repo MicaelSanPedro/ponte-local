@@ -152,7 +152,9 @@ def main():
             if r["id"] == cid:
                 ok = "OK" if r["ok"] else f"ERRO: {r.get('error')}"
                 print(f"← #{cid} [{ok}] ({r.get('durationMs', 0)}ms no seu PC)")
-                print(json.dumps(r.get("data"), ensure_ascii=False, indent=2)[:60000])
+                # Sem corte prático: pedaços de read_text/read_binary (v1.4.0) chegam
+                # com ~8 MB de base64/texto e precisam sair INTEIROS p/ o chamador.
+                print(json.dumps(r.get("data"), ensure_ascii=False, indent=2)[:16_000_000])
                 return 0 if r["ok"] else 2
     print(f"TEMPO ESGOTADO esperando o resultado do comando #{cid}")
     return 3
