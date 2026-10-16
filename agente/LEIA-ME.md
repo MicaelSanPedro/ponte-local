@@ -22,7 +22,8 @@ VM**, sem você precisar copiar nada manualmente.
 ## Como rodar (primeira vez)
 
 1. Abra o terminal na pasta onde está este arquivo (no Windows, PowerShell).
-2. Rode o comando que te passei no chat (o painel de status também mostra):
+2. Rode o comando que te passei no chat (ele já vem com servidor e token
+   preenchidos — você não configura nada à mão):
 
    **Linux:**
 
@@ -43,8 +44,10 @@ VM**, sem você precisar copiar nada manualmente.
    node agent.js
    ```
 
-3. Deixe a janela aberta. Quando o agente conectar, a luz do painel de status
-   fica verde e eu começo a enxergar a sua máquina.
+3. Deixe a janela aberta. Quando o agente conectar, o banner dele mostra modo,
+   escopo e proteções — e do lado da IA o status já responde `connected:true`.
+   (Se o relay tiver painel web, é só um visor opcional com uma luz verde:
+   nada da instalação depende dele.)
 
 Para encerrar: `Ctrl+C`. Para religar: `node agent.js`.
 

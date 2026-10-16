@@ -48,9 +48,14 @@ conexões de **saída** — nada de portas abertas, firewall, port forwarding ou
    (a pasta onde ele foi iniciado, tipicamente `~/ponte-agent` ou
    `%USERPROFILE%\ponte-agent`) — use sempre `/home/usuario/...` no Linux ou
    `C:\Users\usuario\...` no Windows.
-6. **Um comando por vez de qualidade.** Prefira comandos pequenos e legíveis
-   (o usuário pode ler no painel). Combine com `&&`/`;` quando fizer sentido
-   (no Windows PowerShell, use `;`).
+6. **Um comando por vez de qualidade.** Prefira comandos pequenos e legíveis.
+   Combine com `&&`/`;` quando fizer sentido (no Windows PowerShell, use `;`).
+7. **Instalação sem painel, sem etapa manual.** A configuração do agente são
+   dois valores — a URL pública e o `PONTE_AGENT_TOKEN` — e é VOCÊ quem os
+   embute no bloco de comandos que entrega ao usuário (Fase 2). Ele só copia,
+   cola e roda: não digita token, não abre página, não preenche placeholder.
+   O painel web do relay é opcional e cosmético — nada da instalação ou da
+   operação depende dele.
 
 ## Pré-requisitos — mostre isto ao usuário
 
@@ -134,7 +139,11 @@ processos): URL errada devolve 404 e só queima tempo e chamadas de ferramenta.
 
 1. **Contexto da plataforma.** Em previews por sessão (ex.: z.ai/space-z), a
    URL é `https://preview-chat-<CHAT_ID>.space-z.ai/` — o `CHAT_ID` é o campo
-   `chat_id` do metadata da conversa (vem no contexto de cada mensagem).
+   `chat_id` do metadata da conversa, que vem anexado ao contexto de CADA
+   mensagem. Montar a URL é determinístico — nada de "criar" ou adivinhar: em
+   chat da plataforma você sempre o tem. Se a URL mudar (rebuild, nova
+   sessão), reenvie o bloco da Fase 2 com a URL nova; o `--save` regrava a
+   config do agente sozinho.
 2. **Variáveis de ambiente:** `env | grep -iE 'preview|url|host|domain|bot'` —
    muitas plataformas exportam o domínio público ou o id dele.
 3. **Pergunte ao usuário** — ele vê a URL na própria janela: *"me cola a URL
@@ -162,30 +171,28 @@ Local ok + público 404 = o relay está bem; o problema é roteamento/gateway.
 Volte aos passos 1–3 ou use o túnel (4). **Só siga para a Fase 2 com o público
 respondendo** — senão o agente do usuário vai pollar para o nada.
 
-## Painel web — mande a URL ao usuário
+## Entrega da configuração — URL e token junto com os comandos
 
-O painel é a **homepage** do relay (`/`) e já vem pronto — não precisa criar
-nada. Assim que a Fase 1 validar, **mande o link ao usuário**: ele abre antes
-mesmo de instalar o agente. Atualiza a cada 3 s e mostra:
+A configuração inteira do agente são dois valores: a URL pública validada
+acima e o `PONTE_AGENT_TOKEN`. **Não existe etapa de configurar pelo painel**:
+é você quem os embute no bloco de comandos da Fase 2 e entrega pronto ao
+usuário. Ele copia, cola e roda — não digita token, não abre página, não
+preenche placeholder. O mesmo bloco funciona em bash e no PowerShell e segue
+funcionando depois: se a URL de preview mudar, você reenvia o bloco atualizado
+e o `--save` regrava a config sozinho.
 
-- **Luz de conexão**: âmbar ("aguardando o seu computador") → verde pulsante
-  quando o PC conecta, com "último contato há Ns"
-- **Info da máquina**: `usuario@host`, CPU, RAM total/livre, sistema e escopo
-- **Bloco de instalação pronto** (URL + token preenchidos) com botão copiar —
-  usa `window.location.origin`, então em preview que muda de URL o usuário
-  sempre copia o link certo
-- **Regras que o agente não quebra**: escopo na home, lixeira com desfazer,
-  trava anticatástrofe, escalada de modo só física
-
-Use o painel como âncora visual: depois de cada mudança de modo do agente,
-peça para o usuário conferir a luz verde lá.
+O relay também tem um painel web — é a homepage `/` (luz de conexão, info da
+máquina, status em tempo real). Trate-o como **opcional e cosmético**: um
+visor para o usuário conferir a luz verde, se ele quiser. Nenhuma etapa de
+instalação ou operação depende dele — nunca mande ninguém "pegar o token no
+painel".
 
 ## Fase 2 — Instalar o agente no PC do usuário
 
 ### Linux
 
-Entregue ao usuário **exatamente este bloco** (substitua URL pela URL pública
-validada na seção anterior e TOKEN pelo `PONTE_AGENT_TOKEN`):
+Entregue ao usuário **este bloco com URL e token JÁ preenchidos por você** (a
+URL pública validada + o `PONTE_AGENT_TOKEN`) — ele só copia e cola:
 
 ```bash
 mkdir -p ~/ponte-agent && cd ~/ponte-agent
@@ -224,8 +231,9 @@ drive, `C:\Windows`, `C:\Program Files` ou `$HOME`.
   o banner mostra modo, escopo e proteções).
 - Próximas vezes: `~/ponte-agent/rodar.sh` (Linux, relê `ponte.config.json`) ou
   `cd $HOME\ponte-agent; node agent.js` (Windows).
-- O `AGENT_TOKEN` é sensível: entregue no canal privado onde o usuário roda
-  os comandos. Nunca versionado.
+- URL e token vão **juntos, no mesmo bloco**, preenchidos por você no canal
+  privado onde o usuário roda os comandos. Nunca versionados — e nunca
+  "pegue no painel": quem preenche é você.
 
 ## Fase 3 — Validar a conexão
 
@@ -404,6 +412,8 @@ cp ~/Downloads/agent-vNOVA.js ~/ponte-agent/agent.js
 # no PC do usuário (Windows/PowerShell):
 copy "$HOME\Downloads\agent-vNOVA.js" "$HOME\ponte-agent\agent.js"
 # Ctrl+C no agente e religue no modo escolhido (--auto --save / --allow-run --save)
+# ao religar, entregue URL e token JÁ preenchidos no mesmo comando:
+#   node agent.js --server https://URL-ATUAL --token AGENT_TOKEN --save
 ```
 
 ## Estrutura deste repo

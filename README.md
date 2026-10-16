@@ -144,7 +144,7 @@ ponte-local/
 ├── relay/
 │   ├── ponte-store.ts     ← estado do relay: fila, claim/lease, seq em disco
 │   ├── api/…/route.ts     ← poll · result · cmd · results · status · download
-│   ├── painel/page.tsx    ← painel web (status + bloco de instalação pronto)
+│   ├── painel/page.tsx    ← painel web opcional (status em tempo real)
 │   └── RESTAURAR.md       ← recriar o relay do zero numa VM nova
 ├── operador/
 │   ├── ponte.py           ← CLI do operador (injeta comandos, lê resultados)
