@@ -9,6 +9,8 @@ description: >-
   computador dele: organizar arquivos, procurar coisas, rodar comandos,
   trocar configurações do desktop, automatizar tarefas locais, ler arquivos
   de qualquer formato ou tamanho (leitura por pedaços com file_info/offset).
+  Se a ponte já está no ar, qualquer IA (Claude, Manus…) opera só com a URL e
+  o ADMIN_TOKEN — sem hospedar nada.
 ---
 
 # Ponte Local — skill de operação remota do PC do usuário
@@ -56,6 +58,53 @@ conexões de **saída** — nada de portas abertas, firewall, port forwarding ou
    cola e roda: não digita token, não abre página, não preenche placeholder.
    O painel web do relay é opcional e cosmético — nada da instalação ou da
    operação depende dele.
+
+## A ponte já existe? Opere sem hospedar (Claude, Manus, qualquer IA)
+
+As Fases 1 e 2 (relay, túnel, busca de URL, instalação do agente) servem para
+quem vai **hospedar** a ponte. Se ela já está no ar — instalada por outra
+sessão, outra IA ou outra plataforma — você não cria URL nem token nenhum e
+não precisa de painel nem de Python: a ponte é **API HTTP pura**, e qualquer
+IA com `curl` opera de qualquer lugar do mundo.
+
+1. Peça ao usuário os dois valores (quem instalou a ponte os entregou prontos
+   no bloco de comandos): a **URL pública** e o **ADMIN_TOKEN**.
+2. Valide e opere com curl puro — exemplo real, ponta a ponta:
+
+```bash
+export PONTE_URL=https://A-URL
+export PONTE_ADMIN_TOKEN=o-token-de-admin
+
+# o PC está conectado? (rota pública, sem token)
+curl -s $PONTE_URL/api/ponte/status
+
+# enfileira um comando — a resposta traz {"ok":true,"id":77,"channel":"prod"}
+curl -s -X POST $PONTE_URL/api/ponte/cmd \
+  -H "x-ponte-admin: $PONTE_ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"action":"ping","args":{}}'
+
+# alguns segundos depois (o agente polla a cada 1,5 s), leia desde id-1
+curl -s "$PONTE_URL/api/ponte/results?since=76" \
+  -H "x-ponte-admin: $PONTE_ADMIN_TOKEN"
+```
+
+3. `results?since=X` devolve `{"ok":true,"results":[...],"lastId":M}` — o
+   `lastId` é o seu próximo cursor `since`. Resultado vazio: ou o agente ainda
+   não pollou (releia em 3–5 s) ou está offline (`status` mostra
+   `connected:false` — peça ao usuário para religar o agente).
+4. Daí em diante, a tabela da **Fase 4** vale igual — mesmas ações, mesmos
+   limites. Texto, JSON e base64 cabem no curl; para arquivos grandes use
+   `read_binary`/`read_text` por pedaços (funciona no curl) ou o `ponte.py
+   enviar/pegar` na SUA máquina, se tiver Python.
+
+**Sobre a URL de quem hospeda:** a ponte pode rodar num preview de plataforma
+(ex.: z.ai) e mesmo assim ser operada por Claude, Manus ou um terminal
+qualquer — o relay não sabe nem importa de onde vem o `curl`. Mas a URL é da
+plataforma que hospeda: se ela mudar ou sair do ar, só a sessão hospedeira
+reemite o bloco com a URL nova. Para uso permanente e independente de
+plataforma, hospede o relay num serviço com domínio fixo (VPS, Render,
+Railway, Fly.io) — o repo tem tudo em `relay/RESTAURAR.md` — e a URL nunca
+mais muda.
 
 ## Pré-requisitos — mostre isto ao usuário
 
@@ -132,6 +181,10 @@ cada rebuild — confira e, se mudar, o agente precisa ser religado com a URL
 nova (`--server NOVA_URL --save`).
 
 ## A URL pública — descubra, nunca adivinhe
+
+> **Você é só o operador (a ponte já existe)?** Esta seção — e a Fase 1 — são
+> para quem hospeda o relay. Vá direto para **"A ponte já existe? Opere sem
+> hospedar"**: você não precisa de URL nova nem de token novo.
 
 O agente precisa de uma URL pública HTTPS que chegue ao relay. Descubra nesta
 ordem — e **nunca teste candidatos inventados** (wildcard, id chutado, grep em

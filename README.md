@@ -79,7 +79,7 @@ A troca de modo é sempre **física**: só você, digitando o flag no terminal d
 
 ### 🤖 Caminho 1 — deixe a IA instalar (recomendado)
 
-Abra um chat com sua IA e diga: *"leia https://github.com/MicaelSanPedro/ponte-local/blob/main/SKILL.md e instale a ponte pra mim"*. A skill guia tudo: relay, tokens, download do agente, validação e o primeiro comando.
+Abra um chat com sua IA e diga: *"leia https://github.com/MicaelSanPedro/ponte-local/blob/main/SKILL.md e instale a ponte pra mim"*. A skill guia tudo: relay, tokens, download do agente, validação e o primeiro comando. A ponte já está no ar? Diga *"leia o SKILL.md e opere minha ponte"* colando URL + ADMIN_TOKEN — Claude, Manus ou qualquer IA com `curl` opera sem hospedar nada.
 
 ### 🖥️ Caminho 2 — manual
 
